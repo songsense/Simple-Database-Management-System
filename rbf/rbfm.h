@@ -22,7 +22,7 @@ typedef struct
   unsigned pageNum;
   unsigned slotNum;
 } RID;
-// slot directory
+// slot directory: saved in pages
 typedef struct {
 	void * recordOffset;
 	unsigned recordLength;
