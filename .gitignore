@@ -12,3 +12,11 @@
 *.la
 *.a
 /Debug
+
+*.inc
+
+rbf/rbftest
+
+*.inc
+
+makefile.inc

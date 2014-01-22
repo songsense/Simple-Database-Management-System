@@ -258,7 +258,7 @@ unsigned FileHandle::getNumberOfPages()
 		PagedFileManager::instance()->PrintFileStreamError("FileHandle::getNumberOfPages");
 		return 0;
 	} else {
-		return ftell (pFile) / PAGE_SIZE;
+		return ftell(pFile) / PAGE_SIZE;
 	}
 }
 // Get the free space associated with page num
