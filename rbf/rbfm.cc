@@ -147,6 +147,7 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     		ss << str;
     		slot += len;
     		length = len;
+    		delete []str;
     	}
     	cout << recordDescriptor[i].name << "\t\t\t";
     	cout << type << "\t\t\t";
