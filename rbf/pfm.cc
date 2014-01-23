@@ -31,7 +31,7 @@ bool PagedFileManager::fileExist(const char* fileName) {
 RC PagedFileManager::createFile(const char *fileName)
 {
 	if (fileExist(fileName)) {
-		// check if a file has already existed
+		// Check if a file has already existed
 		PrintError("File exists in PagedFileManager::createFile");
 		return FILE_EXIST;
 	}
@@ -65,10 +65,11 @@ RC PagedFileManager::destroyFile(const char *fileName)
     return UNKNOWN_FAILURE;
 }
 
-// This method opens the paged file whose name is fileName. The file must already exist
+// This method opens the page file whose name is fileName. The file must already exist
 // and it must have been created using the createFile method.
 RC PagedFileManager::openFile(const char *fileName, FileHandle &fileHandle)
 {
+	// Check file's existence
 	if (false == fileExist(fileName)) {
 		PrintError("PagedFileManager::openFile: File not exist");
 		return FILE_NOT_EXIST;
@@ -80,34 +81,41 @@ RC PagedFileManager::openFile(const char *fileName, FileHandle &fileHandle)
 		fileHandle.pFile = fp;
 		return SUCC;
 	}
+	// Open file
 	fileHandle.pFile = fopen(fileName, "r+");
 	if (NULL == fileHandle.pFile) {
 		PrintFileStreamError("PagedFileManager::openFile");
 		return FILE_OPEN_FAILURE;
 	}
 	fileHandle.fileName.assign(fileName);
+	
+	// Increase refCounter
 	inc_refCounter(fileName, fileHandle);
 	return SUCC;
 }
 
-// This method closes the open file instance referred to by fileHandle.
+// This method closes the open file instance referred  by fileHandle.
 // The file must have been opened using the openFile method.
 // All of the file's pages are flushed to disk when the file is closed.
 RC PagedFileManager::closeFile(FileHandle &fileHandle)
 {
+	// Check if the file is opened by openFile method
 	if (NULL == fileHandle.pFile) {
 		PrintFileStreamError("PagedFileManager::closeFile");
 		return FILE_NOT_OPEN_BY_HANDLE;
 	} else {
+		// Check whether if there is any error of the file
 		if (ferror (fileHandle.pFile)) {
 			PrintFileStreamError("PagedFileManager::closeFile");
 			return FILE_STREAM_FAILURE;
 		}
+		//Check whether if the file was flushed to disk
 		if (fflush(fileHandle.pFile) != 0) {
 			PrintFileStreamError("PagedFileManager::closeFile");
 			return FILE_STREAM_FAILURE;
 		}
 		FILE *fp(NULL);
+		//Check the file's reference
 		if (get_refCounter(fileHandle.fileName, fp) > 0) {
 			dec_refCounter(fileHandle.fileName);
 		} else {
@@ -118,9 +126,10 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle)
 	}
     return UNKNOWN_FAILURE;
 }
-// reference increment
+// Reference increment
 void PagedFileManager::inc_refCounter(const string &fileName, FileHandle &fileHandle) {
 	unordered_map<string, FileInfo>::iterator itr = refCounter.find(fileName);
+	//Check the current reference, if not exist,  set as 1
 	if (itr == refCounter.end()) {
 		FileInfo fileInfo(fileHandle.pFile, 1);
 		refCounter.insert(pair<string, FileInfo>(fileName, fileInfo));
@@ -133,19 +142,23 @@ void PagedFileManager::inc_refCounter(const string &fileName, FileHandle &fileHa
 // reference decrement
 void PagedFileManager::dec_refCounter(const string &fileName) {
 	unordered_map<string, FileInfo>::iterator itr = refCounter.find(fileName);
+	//Check the current reference
 	if (itr == refCounter.end()) {
 		return;
 	} else if (itr->second.cnt > 0){
 		itr->second.cnt -= 1;
 	} else {
+		//if the reference is zero, delete the reference counter, close the file
 		fclose(itr->second.fp);
 		refCounter.erase(itr);
+		// delete the file free space manager
 		filesSpaceManager.erase(fileName);
 	}
 }
-// get reference count of a file
+// Get reference count of a file
 int PagedFileManager::get_refCounter(const string &fileName, FILE *&fp) {
 	unordered_map<string, FileInfo>::iterator itr = refCounter.find(fileName);
+	// If not exist, return 0, else return the reference
 	if (itr == refCounter.end()) {
 		fp = NULL;
 		return 0;
@@ -154,12 +167,12 @@ int PagedFileManager::get_refCounter(const string &fileName, FILE *&fp) {
 		return itr->second.cnt;
 	}
 }
-// close the reference counter with given file name
+// Close the reference counter with given file name
 void PagedFileManager::close_refCounter(const string &fileName) {
 	refCounter.erase(fileName);
 	filesSpaceManager.erase(fileName);
 }
-// try to close those files with zero reference
+// Try to close those files with zero reference
 void PagedFileManager::closeFileZeroRef() {
 	unordered_map<string, FileInfo>::iterator itr = refCounter.begin();
 	while (itr != refCounter.end()) {
