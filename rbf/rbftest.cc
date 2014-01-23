@@ -718,6 +718,122 @@ int RBFTest_10(RecordBasedFileManager *rbfm, vector<RID> &rids, vector<int> &siz
     }
 }
 
+int RBFTest_11(RecordBasedFileManager *rbfm) {
+    // Functions tested
+    // 1. Create Record-Based File
+    // 2. Open Record-Based File
+    // 3. Insert Record
+    // 4. Read Record
+    // 5. Close Record-Based File
+    // 6. Destroy Record-Based File
+    cout << "****In RBF Test Case 8****" << endl;
+
+    RC rc;
+    string fileName = "test_5";
+
+    // Create a file named "test_5"
+    cout << "creating a file named "<< fileName << endl;
+    rc = rbfm->createFile(fileName.c_str());
+    assert(rc == success);
+    if(FileExists(fileName.c_str()))
+    {
+        cout << "File " << fileName << " has been created." << endl;
+    }
+    else
+    {
+        cout << "Failed to create file!" << endl;
+        cout << "Test Case 8 Failed!" << endl << endl;
+        return -1;
+    }
+
+    // Open the file "test_3"
+    FileHandle fileHandle_1, fileHandle_2;
+    rc = rbfm->openFile(fileName.c_str(), fileHandle_1);
+    assert(rc == success);
+    rc = rbfm->openFile(fileName.c_str(), fileHandle_2);
+    assert(rc == success);
+
+
+    RID rid;
+    int recordSize = 0;
+    void *record = malloc(100);
+    void *returnedData = malloc(100);
+
+    vector<Attribute> recordDescriptor;
+    createRecordDescriptor(recordDescriptor);
+
+    // Insert a record into a file
+    prepareRecord(6, "Peters", 24, 170.1, 5000, record, &recordSize);
+    cout << "Print Data:" << endl;
+    rbfm->printRecord(recordDescriptor, record);
+    cout << "Insert Data:" << endl;
+    rc = rbfm->insertRecord(fileHandle_1, recordDescriptor, record, rid);
+    assert(rc == success);
+    cout << "Read Data:" << endl;
+    // Given the rid, read the record from file
+    rc = rbfm->readRecord(fileHandle_1, recordDescriptor, rid, returnedData);
+    assert(rc == success);
+
+    cout << "Returned Data:" << endl;
+    rbfm->printRecord(recordDescriptor, returnedData);
+
+    // Compare whether the two memory blocks are the same
+    if(memcmp(record, returnedData, recordSize) != 0)
+    {
+       cout << "Test Case 1 Failed!" << endl << endl;
+        free(record);
+        free(returnedData);
+        return -1;
+    }
+
+    // Close the file "test_5"
+    rc = rbfm->closeFile(fileHandle_1);
+    assert(rc == success);
+
+
+    // test file handle 2
+
+    // Insert a record into a file
+    prepareRecord(3, "Tom", 28, 180.1, 9000, record, &recordSize);
+    cout << "Print Data:" << endl;
+    rbfm->printRecord(recordDescriptor, record);
+    cout << "Insert Data:" << endl;
+    rc = rbfm->insertRecord(fileHandle_2, recordDescriptor, record, rid);
+    cout << "rc: " << rc << endl;
+    assert(rc == success);
+    cout << "Read Data:" << endl;
+    // Given the rid, read the record from file
+    rc = rbfm->readRecord(fileHandle_2, recordDescriptor, rid, returnedData);
+    assert(rc == success);
+
+    cout << "Returned Data:" << endl;
+    rbfm->printRecord(recordDescriptor, returnedData);
+
+    // Compare whether the two memory blocks are the same
+    if(memcmp(record, returnedData, recordSize) != 0)
+    {
+       cout << "Test Case 11 Failed!" << endl << endl;
+        free(record);
+        free(returnedData);
+        return -1;
+    }
+
+    // Close the file "test_5"
+    rc = rbfm->closeFile(fileHandle_2);
+    assert(rc == success);
+
+
+    // Destroy File
+    rc = rbfm->destroyFile(fileName.c_str());
+    assert(rc == success);
+
+    free(record);
+    free(returnedData);
+    cout << "Test Case 11 Passed!" << endl << endl;
+
+    return 0;
+}
+
 int main()
 {
     PagedFileManager *pfm = PagedFileManager::instance(); // To test the functionality of the paged file manager
@@ -728,6 +844,7 @@ int main()
     remove("test_2");
     remove("test_3");
     remove("test_4");
+    remove("test_5");
 
     RBFTest_1(pfm);
     RBFTest_2(pfm); 
@@ -743,6 +860,8 @@ int main()
     vector<int> sizes;
     RBFTest_9(rbfm, rids, sizes);
     RBFTest_10(rbfm, rids, sizes);
+
+    RBFTest_11(rbfm);
 
     return 0;
 }

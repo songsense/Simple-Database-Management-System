@@ -79,6 +79,9 @@ RC PagedFileManager::openFile(const char *fileName, FileHandle &fileHandle)
 	// if there are more than one handle than opens the file, use that FILE instead
 	if (get_refCounter(fileName, fp) > 0) {
 		fileHandle.pFile = fp;
+		// Increase refCounter
+		fileHandle.fileName.assign(fileName);
+		inc_refCounter(fileName, fileHandle);
 		return SUCC;
 	}
 	// Open file
@@ -145,7 +148,7 @@ void PagedFileManager::dec_refCounter(const string &fileName) {
 	//Check the current reference
 	if (itr == refCounter.end()) {
 		return;
-	} else if (itr->second.cnt > 0){
+	} else if (itr->second.cnt > 1){
 		itr->second.cnt -= 1;
 	} else {
 		//if the reference is zero, delete the reference counter, close the file
@@ -276,19 +279,10 @@ unsigned FileHandle::getNumberOfPages()
 	}
 }
 // Get the free space associated with page num
+// Note that the page must be loaded already
 unsigned FileHandle::getSpaceOfPage(PageNum pageNum, void *page) {
 	unsigned long sp = (unsigned long)(*((unsigned long*)(page) + PAGE_SIZE/sizeof(unsigned long) - 1ul));
 	return PAGE_SIZE - sp;
-/*
-	RC rc = readPage(pageNum, page);
-	if (rc != SUCC) {
-		cerr << "Error to compute the size of page" << endl;
-		return 0;
-	} else {
-		unsigned long sp = (unsigned long)(*((unsigned long*)(page) + PAGE_SIZE/sizeof(unsigned long) - 1ul));
-		return PAGE_SIZE - sp;
-	}
-	*/
 }
 
 // File Space manager
