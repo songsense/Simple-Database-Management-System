@@ -288,10 +288,10 @@ unsigned RecordBasedFileManager::getRecordDirectorySize(const vector<Attribute> 
 void * RecordBasedFileManager::getFreeSpaceStartPoint(void *page) {
 	char *p = (char *)page + PAGE_SIZE - sizeof(FieldAddress);
 	FieldAddress addr = *(FieldAddress *)(p);
-	return (void *)addr;
+	return (char *)page + addr;
 }
 void RecordBasedFileManager::setFreeSpaceStartPoint(void *page, void *startPoint) {
-	FieldAddress addr = (FieldAddress)(startPoint);
+	FieldAddress addr = (FieldAddress)(startPoint) - (FieldAddress)(page);
 	char *p = (char *)page + PAGE_SIZE - sizeof(FieldAddress);
 	memcpy(p, &addr, sizeof(FieldAddress));
 }
@@ -300,8 +300,7 @@ void RecordBasedFileManager::setFreeSpaceStartPoint(void *page, void *startPoint
 unsigned RecordBasedFileManager::getFreeSpaceSize(void *page) {
 	char *beg = (char *)page + PAGE_SIZE - sizeof(FieldAddress);
 	FieldAddress addr_beg = *((FieldAddress *)(beg));
-	char *end = (char *)page + PAGE_SIZE;
-	unsigned space = (FieldAddress)(end) - addr_beg;
+	unsigned space = PAGE_SIZE - addr_beg;
 	space = space - getNumSlots(page) * sizeof(SlotDir) - sizeof(SlotNum) - sizeof(FieldAddress);
 	return space;
 }
