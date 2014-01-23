@@ -178,10 +178,12 @@ void PagedFileManager::close_refCounter(const string &fileName) {
 // Try to close those files with zero reference
 void PagedFileManager::closeFileZeroRef() {
 	unordered_map<string, FileInfo>::iterator itr = refCounter.begin();
+	//check the reference counter, close those files with counter <= 0
 	while (itr != refCounter.end()) {
 		if (itr->second.cnt <= 0) {
 			fclose(itr->second.fp);
 			itr = refCounter.erase(itr);
+			//delete the file free space manager
 			filesSpaceManager.erase(itr->first);
 		} else {
 			++itr;
@@ -203,6 +205,7 @@ FileHandle::~FileHandle()
 // Note the page number starts from 0.
 RC FileHandle::readPage(PageNum pageNum, void *data)
 {
+	//check page existence
     if (pageNum > getNumberOfPages()) {
     	PagedFileManager::instance()->PrintError("file does not exist in FileHandle::readPage");
     	return PAGE_NOT_EXIST;
@@ -226,6 +229,7 @@ RC FileHandle::readPage(PageNum pageNum, void *data)
 // The page should exist. Note the page number starts from 0.
 RC FileHandle::writePage(PageNum pageNum, const void *data)
 {
+	//check page existence
 	if (pageNum > getNumberOfPages()) {
 		PagedFileManager::instance()->PrintError("file does not exist in FileHandle::writePage");
 		return PAGE_NOT_EXIST;
@@ -239,6 +243,7 @@ RC FileHandle::writePage(PageNum pageNum, const void *data)
 				PagedFileManager::instance()->PrintFileStreamError("2. FileHandle::writePage");
     			return FILE_STREAM_FAILURE;
 			} else {
+				//flush page and return success
 				fflush(pFile);
 				return SUCC;
 			}
@@ -278,6 +283,7 @@ unsigned FileHandle::getNumberOfPages()
 		return ftell(pFile) / PAGE_SIZE;
 	}
 }
+
 // Get the free space associated with page num
 // Note that the page must be loaded already
 unsigned FileHandle::getSpaceOfPage(PageNum pageNum, void *page) {
@@ -287,22 +293,30 @@ unsigned FileHandle::getSpaceOfPage(PageNum pageNum, void *page) {
 
 // File Space manager
 FileSpaceManager::FileSpaceManager(FileHandle &fileHandle) {
+	//get the total number of pages 
 	unsigned totalNumPage = fileHandle.getNumberOfPages();
-
+	//check every page
 	for (unsigned i = 0; i < totalNumPage; ++i) {
 		char page[PAGE_SIZE];
 		fileHandle.readPage(i, page);
+		//get free space for that page
 		unsigned space = fileHandle.getSpaceOfPage(i, page);
+		//write free space information
 		PageSpaceInfo psInfo(space, i);
 		pageQueue.push(psInfo);
 	}
 }
+
+
 FileSpaceManager::FileSpaceManager() {
 }
+
 // Get the page with the greatest free space size
 RC FileSpaceManager::getPageSpaceInfo(const unsigned &recordSize, PageNum &pageNum) {
 	if (pageQueue.empty())
 		return FILE_SPACE_EMPTY;
+	
+	//check whether if there is enough free space
 	PageSpaceInfo pageSpaceInfo = pageQueue.top();
 	if (pageSpaceInfo.freeSpaceSize < recordSize) {
 		// the free space of the page is less than the record to be inserted
@@ -329,17 +343,20 @@ RC FileSpaceManager::pushPageSpaceInfo(const unsigned &freeSpaceSize, const unsi
 
 
 
-
+//Buffer manager
 BufferManager::BufferManager() :
-		buffer((char *)malloc(MAX_PAGE_IN_MEM * PAGE_SIZE)) {
+	//alocate memory
+	buffer((char *)malloc(MAX_PAGE_IN_MEM * PAGE_SIZE)) {
 	memset(buffer, 0, MAX_PAGE_IN_MEM * PAGE_SIZE);
 	for (int i = 0; i < MAX_PAGE_IN_MEM; ++i) {
 		availableFrameOffset.push_back(i * PAGE_SIZE);
 	}
 }
+
 BufferManager::~BufferManager() {
 	free(buffer);
 }
+
 BufferManager* BufferManager::instance()
 {
     if(!_bf_manager) {
@@ -348,12 +365,15 @@ BufferManager* BufferManager::instance()
 
     return _bf_manager;
 }
+
 // determine if a page is stored in buffer manager
 bool BufferManager::existPage(const string &fileName, PageNum pageNum) {
 	FrameTable::iterator itrFrame = frameTable.find(fileName);
+	//check file existence
 	if (itrFrame == frameTable.end()) {
 		return false;
 	} else {
+		//check page existence
 		FrameInfo2ndLevel::iterator itrFrame2 = itrFrame->second.find(pageNum);
 		if (itrFrame2 == itrFrame->second.end())
 			return false;
@@ -361,17 +381,20 @@ bool BufferManager::existPage(const string &fileName, PageNum pageNum) {
 			return true;
 	}
 }
-// Get a specific page
+// Get a specific page in buffer pool
 RC BufferManager::readPage(const string &fileName, PageNum pageNum, void *&data)  {
+	//check file existence in buffer pool
 	FrameTable::iterator itrFrame = frameTable.find(fileName);
 	if (itrFrame == frameTable.end()) {
 		return BUFFER_FILE_NOT_HIT;
 	} else {
+		//check page existance in buffer pool
 		FrameInfo2ndLevel::iterator itrFrame2 = itrFrame->second.find(pageNum);
 		if (itrFrame2 == itrFrame->second.end()) {
 			return BUFFER_PAGENUM_NOT_HIT;
 		}
 		else {
+			//read data from that page and update MRU
 			FrameOffset offset = itrFrame2->second;
 			data = (void *)(buffer + offset);
 			updateMRU();
@@ -382,15 +405,18 @@ RC BufferManager::readPage(const string &fileName, PageNum pageNum, void *&data)
 // Write a specific page
 // Note the page is dirty, must be saved to disk outside
 RC BufferManager::writePage(const string &fileName, PageNum pageNum, void *data) {
+	//check file existence in buffer pool
 	FrameTable::iterator itrFrame = frameTable.find(fileName);
 	if (itrFrame == frameTable.end()) {
 		return BUFFER_FILE_NOT_HIT;
 	} else {
+		//check file existence in buffer pool
 		FrameInfo2ndLevel::iterator itrFrame2 = itrFrame->second.find(pageNum);
 		if (itrFrame2 == itrFrame->second.end()) {
 			return BUFFER_PAGENUM_NOT_HIT;
 		}
 		else {
+			//write page in buffer pool and update MRU
 			FrameOffset offset = itrFrame2->second;
 			memcpy(buffer + offset, data, PAGE_SIZE * sizeof(char));
 			updateMRU();
@@ -402,6 +428,7 @@ RC BufferManager::writePage(const string &fileName, PageNum pageNum, void *data)
 
 // Load pages to the memory
 RC BufferManager::loadPages(FileHandle *fileHandle, PageNum startPageNum, unsigned numPages2Load) {
+	//get the number of pages
 	unsigned numPages = fileHandle->getNumberOfPages();
 	numPages = startPageNum < numPages ? numPages-startPageNum : 0;
 	numPages2Load = numPages2Load > numPages ? numPages: numPages2Load;
