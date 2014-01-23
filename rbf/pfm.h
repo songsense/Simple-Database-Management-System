@@ -63,7 +63,7 @@ struct FileInfo {
  * Heap file management
  */
 struct PageSpaceInfo {
-	unsigned freeSpaceSize;
+	unsigned short freeSpaceSize;
 	unsigned pageNum;
 	PageSpaceInfo & operator=(const PageSpaceInfo &p) {
 		if (&p == this)
@@ -82,7 +82,7 @@ private:
 class spaceComparator {
 public:
 	bool operator() (const PageSpaceInfo &lhs, const PageSpaceInfo &rhs) {
-		return lhs.freeSpaceSize < rhs.freeSpaceSize;
+		return lhs.freeSpaceSize > rhs.freeSpaceSize;
 	}
 };
 

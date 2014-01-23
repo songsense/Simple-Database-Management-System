@@ -694,9 +694,11 @@ int RBFTest_10(RecordBasedFileManager *rbfm, vector<RID> &rids, vector<int> &siz
     }
     
     // Close the file "test_4"
+    cout << "closing file" << endl;
     rc = rbfm->closeFile(fileHandle);
     assert(rc == success);
-    
+    cout << "closing file successfully" << endl;
+
     rc = rbfm->destroyFile(fileName.c_str());
     assert(rc == success);
 

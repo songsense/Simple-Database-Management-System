@@ -39,9 +39,13 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const void *data, RID &rid) {
 	// get record size to be inserted
-	unsigned recordSize = 0;
-	unsigned recordDirectorySize = getRecordDirectorySize(recordDescriptor, recordSize);
+	// translate the data to the raw data version
+	unsigned recordSize = translateRecord2Raw(recordConent, data, recordDescriptor);
+	// to determine whether a record can be inserted, must include the slot directory size
+	unsigned recordDirectorySize = recordSize + sizeof(SlotDir);
+
 	// get the first page that is available
+	// first find the file handle. determine if it is existed
 	PagedFileManager * pmfInstance = PagedFileManager::instance();
 	MultipleFilesSpaceManager::iterator itr = pmfInstance->filesSpaceManager.find(fileHandle.fileName);
 	if (itr == pmfInstance->filesSpaceManager.end()) {
@@ -57,32 +61,43 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		rc = fileHandle.appendPage(pageContent);
 		if (rc != SUCC)
 			cerr << "cannot append a new page" << endl;
+		// obtain the newly allocated page's num
 		pageNum = fileHandle.getNumberOfPages()-1;
 	}
-	// obtain the page data
+	// load the page data
 	rc = fileHandle.readPage(pageNum, pageContent);
+
 	// get the start point to write with
 	char *startPoint = (char*)(getFreeSpaceStartPoint(pageContent));
 	char *originalStartPoint = startPoint;
-	recordSize = translateRecord2Raw(startPoint, data, recordDescriptor);
+
+	//  write data onto the page memory
+	memcpy(startPoint, recordConent, recordSize);
+
     // update the free space pointer of the page
 	startPoint += recordSize;
 	setFreeSpaceStartPoint(pageContent, startPoint);
-	// get the # of slots for updating
+	// get the # of slots
 	SlotNum numSlots = getNumSlots(pageContent);
 	// update the number of slots in this page
-	setNumSlots(pageContent, numSlots+1);
+	rc = setNumSlots(pageContent, numSlots+1);
+	if (rc != SUCC) {
+		cerr << "fail to set number of slots " << rc << endl;
+		return rc;
+	}
 	// update the directory of the slot
 	SlotDir slotDir;
 	slotDir.recordLength = recordSize;
 	slotDir.recordOffset = originalStartPoint;
 	rc = setSlotDir(pageContent, slotDir, numSlots+1);
 	if (rc != SUCC) {
-		cerr << "fail to update the director of the slot" << endl;
+		cerr << "fail to update the director of the slot " << rc << endl;
 		return rc;
 	}
+
 	// write page into the file
 	fileHandle.writePage(pageNum, pageContent);
+
 	// update the priority queue
 	unsigned freeSpaceSize = getFreeSpaceSize(pageContent);
 	itr->second.popPageSpaceInfo();
@@ -173,6 +188,7 @@ unsigned RecordBasedFileManager::translateRecord2Raw(void *raw,
 	recordSize += sizeof(FieldAddress) + numFields * sizeof(FieldOffset);
 	rawData += recordSize;
 	rawField += sizeof(FieldAddress);
+
 	FieldOffset offset = 0;
 	for (int i = 0; i < numFields; ++i) {
 		switch(rD[i].type) {
@@ -207,7 +223,7 @@ unsigned RecordBasedFileManager::translateRecord2Raw(void *raw,
 			break;
 		}
 	}
-	return recordSize;
+	return recordSize + 4;
 }
 // Translate record to printable version
 void RecordBasedFileManager::translateRecord2Printable(const void *raw,
@@ -264,7 +280,7 @@ unsigned RecordBasedFileManager::getRecordDirectorySize(const vector<Attribute> 
 	recordSize = 0;
 	for (int i = 0; i < recordDescriptor.size(); ++i) {
 		recordSize += recordDescriptor[i].length;
-		len += recordSize + sizeof(FieldOffset); // add one more offset
+		len += recordDescriptor[i].length + sizeof(FieldOffset); // add one more offset
 	}
 	return len + sizeof(FieldAddress) + sizeof(SlotDir); // add address and SlotDir
 }
@@ -280,11 +296,14 @@ void RecordBasedFileManager::setFreeSpaceStartPoint(void *page, void *startPoint
 	memcpy(p, &addr, sizeof(FieldAddress));
 }
 // calculate the size of free space
+// Note this free space does NOT include the SLOT DIRECTORY
 unsigned RecordBasedFileManager::getFreeSpaceSize(void *page) {
 	char *beg = (char *)page + PAGE_SIZE - sizeof(FieldAddress);
 	FieldAddress addr_beg = *((FieldAddress *)(beg));
 	char *end = (char *)page + PAGE_SIZE;
-	return (FieldAddress)(end) - addr_beg;
+	unsigned space = (FieldAddress)(end) - addr_beg;
+	space -= getNumSlots(page) * sizeof(SlotDir) - sizeof(SlotNum);
+	return space;
 }
 // get/set the number of slots
 SlotNum RecordBasedFileManager::getNumSlots(void *page) {
@@ -293,8 +312,7 @@ SlotNum RecordBasedFileManager::getNumSlots(void *page) {
 }
 RC RecordBasedFileManager::setNumSlots(void *page, SlotNum num) {
 	unsigned freeSpace = getFreeSpaceSize(page);
-	unsigned infoLen = sizeof(FieldAddress) + sizeof(SlotNum) +
-			sizeof(SlotDir) * num;
+	unsigned infoLen = sizeof(SlotDir);
 	if (freeSpace < infoLen)
 		return RECORD_NOT_ENOUGH_SPACE_FOR_MORE_SLOTS;
 	char *p = (char *)page + PAGE_SIZE - sizeof(FieldAddress) - sizeof(SlotNum);

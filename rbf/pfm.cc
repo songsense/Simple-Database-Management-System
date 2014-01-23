@@ -55,8 +55,9 @@ RC PagedFileManager::destroyFile(const char *fileName)
 		PrintError("PagedFileManager::destroyFile: File not exist");
 		return FILE_NOT_EXIST;
 	}
-	if (remove(fileName) == 0)
+	if (remove(fileName) == 0) {
 		return SUCC;
+	}
 	else {
 		PrintFileStreamError("PagedFileManager::destroyFile");
 		return FILE_REMOVE_FAILURE;

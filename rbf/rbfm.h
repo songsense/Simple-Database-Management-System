@@ -128,6 +128,7 @@ private:
   // set directory of nth slot
   RC setSlotDir(void *page, const SlotDir &slotDir, const SlotNum &nth);
   char pageContent[PAGE_SIZE];
+  char recordConent[PAGE_SIZE];
 /**************************************************************************************************************************************************************
 ***************************************************************************************************************************************************************
 IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) are NOT required to be implemented for part 1 of the project
