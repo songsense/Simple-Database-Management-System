@@ -283,6 +283,7 @@ unsigned FileHandle::getSpaceOfPage(PageNum pageNum, void *page) {
 		return 0;
 	} else {
 		unsigned long sp = (unsigned long)(*((unsigned long*)(page) + PAGE_SIZE/sizeof(unsigned long) - 1ul));
+		return PAGE_SIZE - sp;
 		return sp - (unsigned long)(page);
 	}
 }
