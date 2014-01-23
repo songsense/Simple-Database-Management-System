@@ -223,7 +223,7 @@ unsigned RecordBasedFileManager::translateRecord2Raw(void *raw,
 			break;
 		}
 	}
-	return recordSize + 4;
+	return recordSize;
 }
 // Translate record to printable version
 void RecordBasedFileManager::translateRecord2Printable(const void *raw,
@@ -302,7 +302,7 @@ unsigned RecordBasedFileManager::getFreeSpaceSize(void *page) {
 	FieldAddress addr_beg = *((FieldAddress *)(beg));
 	char *end = (char *)page + PAGE_SIZE;
 	unsigned space = (FieldAddress)(end) - addr_beg;
-	space -= getNumSlots(page) * sizeof(SlotDir) - sizeof(SlotNum);
+	space = space - getNumSlots(page) * sizeof(SlotDir) - sizeof(SlotNum) - sizeof(FieldAddress);
 	return space;
 }
 // get/set the number of slots
