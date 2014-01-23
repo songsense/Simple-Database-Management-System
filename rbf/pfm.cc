@@ -277,6 +277,9 @@ unsigned FileHandle::getNumberOfPages()
 }
 // Get the free space associated with page num
 unsigned FileHandle::getSpaceOfPage(PageNum pageNum, void *page) {
+	unsigned long sp = (unsigned long)(*((unsigned long*)(page) + PAGE_SIZE/sizeof(unsigned long) - 1ul));
+	return PAGE_SIZE - sp;
+/*
 	RC rc = readPage(pageNum, page);
 	if (rc != SUCC) {
 		cerr << "Error to compute the size of page" << endl;
@@ -284,8 +287,8 @@ unsigned FileHandle::getSpaceOfPage(PageNum pageNum, void *page) {
 	} else {
 		unsigned long sp = (unsigned long)(*((unsigned long*)(page) + PAGE_SIZE/sizeof(unsigned long) - 1ul));
 		return PAGE_SIZE - sp;
-		// return sp - (unsigned long)(page);
 	}
+	*/
 }
 
 // File Space manager
