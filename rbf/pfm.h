@@ -82,7 +82,7 @@ private:
 class spaceComparator {
 public:
 	bool operator() (const PageSpaceInfo &lhs, const PageSpaceInfo &rhs) {
-		return lhs.freeSpaceSize > rhs.freeSpaceSize;
+		return lhs.freeSpaceSize < rhs.freeSpaceSize;
 	}
 };
 

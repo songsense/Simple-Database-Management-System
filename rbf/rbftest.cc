@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdexcept>
 #include <stdio.h> 
+#include <vector>
 
 #include "pfm.h"
 #include "rbfm.h"
@@ -834,8 +835,32 @@ int RBFTest_11(RecordBasedFileManager *rbfm) {
     return 0;
 }
 
+void RBFTest_0() {
+	priority_queue<PageSpaceInfo, vector<PageSpaceInfo>, spaceComparator> pageQueue;
+	int temp[] = {112,41,42,1,232,422};
+	vector<int> freeSpaces(temp, temp+sizeof(temp)/sizeof(int));
+	PageSpaceInfo psInfo(0,0);
+
+	cout << "queue is empty" << endl;
+	assert(pageQueue.size() == 0);
+
+	cout << "push several pages" << endl;
+	for (int i = 0; i < freeSpaces.size(); ++i) {
+		psInfo.freeSpaceSize = freeSpaces[i];
+		psInfo.pageNum = i;
+		pageQueue.push(psInfo);
+	}
+	for (int i = 0; i < freeSpaces.size(); ++i) {
+		psInfo = pageQueue.top();
+		cout << "free space size: " << psInfo.freeSpaceSize << endl;
+		pageQueue.pop();
+	}
+}
+
 int main()
 {
+	RBFTest_0();
+
     PagedFileManager *pfm = PagedFileManager::instance(); // To test the functionality of the paged file manager
     RecordBasedFileManager *rbfm = RecordBasedFileManager::instance(); // To test the functionality of the record-based file manager
     
