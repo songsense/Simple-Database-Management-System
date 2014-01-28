@@ -38,7 +38,8 @@ typedef unsigned PageNum;
 #define PAGE_LEVEL 4 				// defines # of lists for different degrees of free space
 #define MAX_PAGE_IN_MEM 1024		// defines the maximum # of pages opened in a file 262144
 
-
+// define pages for table data
+#define TABLE_PAGES_NUM 6
 
 
 class FileHandle;
@@ -98,6 +99,8 @@ public:
 	RC popPageSpaceInfo();
 	// Push the page space info
 	RC pushPageSpaceInfo(const unsigned &freeSpaceSize, const unsigned &pageNum);
+	// Clear all the page space info
+	void clearPageSpaceInfo();
 };
 typedef unordered_map<string, FileSpaceManager> MultipleFilesSpaceManager;
 /*
@@ -160,54 +163,5 @@ private:
     FileHandle & operator=(const FileHandle &);			// prevent accidentally copy class
     FileHandle(const FileHandle &);						// prevent copy constructor
  };
-
-/*
- * Buffer management
- */
-typedef struct FrameInfo {
-	string fileName;
-	PageNum pageNum;
-	FrameInfo(const string &s, PageNum p) : fileName(s), pageNum(p){}
-	FrameInfo& operator=(const FrameInfo & f) {
-		if (this == &f)
-			return *this;
-		fileName = f.fileName;
-		pageNum = f.pageNum;
-		return *this;
-	}
-	FrameInfo(const FrameInfo &f) {
-		fileName = f.fileName;
-		pageNum = f.pageNum;
-	}
-private:
-	FrameInfo();
-} FrameInfo;
-typedef unsigned FrameOffset;
-typedef unordered_map<string, unordered_map<PageNum, FrameOffset> > FrameTable;
-typedef unordered_map<PageNum, FrameOffset> FrameInfo2ndLevel;
-typedef unordered_map<FrameOffset, FrameInfo> InverseFrameTable;
-class BufferManager {
-private:
-	static BufferManager *_bf_manager;
-	char *buffer;
-    FrameTable frameTable;
-    InverseFrameTable inverseFrameTable;
-    list<FrameOffset> queueMRU;
-    list<FrameOffset> availableFrameOffset;
-    unsigned getNumTotalPages();		// number of used pages
-public:
-    BufferManager();
-    ~BufferManager();
-    static BufferManager* instance();
-    // determine if a page is stored in buffer manager
-    bool existPage(const string &fileName, PageNum pageNum);
-    RC readPage(const string &fileName, PageNum pageNum, void *&data);                           // Get a specific page
-    RC writePage(const string &fileName, PageNum pageNum, void *data);                    // Write a specific page
-    RC loadPages(FileHandle *fileHandle, PageNum startPageNum, unsigned numPage2Load);			// Load pages to the memory
-    // update most recently used page
-    void updateMRU();
-    // TODO
-    void getNextAvailablePage(const string &fileName);
-};
 
 #endif

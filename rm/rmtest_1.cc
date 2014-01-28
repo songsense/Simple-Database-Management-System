@@ -497,7 +497,7 @@ int main()
 {
     // Basic Functions
     cout << endl << "Test Basic Functions..." << endl;
-
+    cout << "void * " << sizeof(void *) << endl;
     // Create Table
     createTable("tbl_employee");
 

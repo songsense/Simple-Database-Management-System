@@ -1,7 +1,6 @@
 #include "pfm.h"
 
 PagedFileManager* PagedFileManager::_pf_manager = 0;
-BufferManager *BufferManager::_bf_manager = 0;
 
 PagedFileManager* PagedFileManager::instance()
 {
@@ -296,7 +295,7 @@ FileSpaceManager::FileSpaceManager(FileHandle &fileHandle) {
 	//get the total number of pages 
 	unsigned totalNumPage = fileHandle.getNumberOfPages();
 	//check every page
-	for (unsigned i = 0; i < totalNumPage; ++i) {
+	for (unsigned i = TABLE_PAGES_NUM; i < totalNumPage; ++i) {
 		char page[PAGE_SIZE];
 		fileHandle.readPage(i, page);
 		//get free space for that page
@@ -338,137 +337,11 @@ RC FileSpaceManager::pushPageSpaceInfo(const unsigned &freeSpaceSize, const unsi
 	pageQueue.push(sp);
 	return SUCC;
 }
-
-
-
-
-
-//Buffer manager
-BufferManager::BufferManager() :
-	//alocate memory
-	buffer((char *)malloc(MAX_PAGE_IN_MEM * PAGE_SIZE)) {
-	memset(buffer, 0, MAX_PAGE_IN_MEM * PAGE_SIZE);
-	for (int i = 0; i < MAX_PAGE_IN_MEM; ++i) {
-		availableFrameOffset.push_back(i * PAGE_SIZE);
+// Clear all the page space info
+void FileSpaceManager::clearPageSpaceInfo() {
+	while(!pageQueue.empty()) {
+		pageQueue.pop();
 	}
 }
 
-BufferManager::~BufferManager() {
-	free(buffer);
-}
 
-BufferManager* BufferManager::instance()
-{
-    if(!_bf_manager) {
-    	_bf_manager = new BufferManager();
-    }
-
-    return _bf_manager;
-}
-
-// determine if a page is stored in buffer manager
-bool BufferManager::existPage(const string &fileName, PageNum pageNum) {
-	FrameTable::iterator itrFrame = frameTable.find(fileName);
-	//check file existence
-	if (itrFrame == frameTable.end()) {
-		return false;
-	} else {
-		//check page existence
-		FrameInfo2ndLevel::iterator itrFrame2 = itrFrame->second.find(pageNum);
-		if (itrFrame2 == itrFrame->second.end())
-			return false;
-		else
-			return true;
-	}
-}
-// Get a specific page in buffer pool
-RC BufferManager::readPage(const string &fileName, PageNum pageNum, void *&data)  {
-	//check file existence in buffer pool
-	FrameTable::iterator itrFrame = frameTable.find(fileName);
-	if (itrFrame == frameTable.end()) {
-		return BUFFER_FILE_NOT_HIT;
-	} else {
-		//check page existance in buffer pool
-		FrameInfo2ndLevel::iterator itrFrame2 = itrFrame->second.find(pageNum);
-		if (itrFrame2 == itrFrame->second.end()) {
-			return BUFFER_PAGENUM_NOT_HIT;
-		}
-		else {
-			//read data from that page and update MRU
-			FrameOffset offset = itrFrame2->second;
-			data = (void *)(buffer + offset);
-			updateMRU();
-			return SUCC;
-		}
-	}
-}
-// Write a specific page
-// Note the page is dirty, must be saved to disk outside
-RC BufferManager::writePage(const string &fileName, PageNum pageNum, void *data) {
-	//check file existence in buffer pool
-	FrameTable::iterator itrFrame = frameTable.find(fileName);
-	if (itrFrame == frameTable.end()) {
-		return BUFFER_FILE_NOT_HIT;
-	} else {
-		//check file existence in buffer pool
-		FrameInfo2ndLevel::iterator itrFrame2 = itrFrame->second.find(pageNum);
-		if (itrFrame2 == itrFrame->second.end()) {
-			return BUFFER_PAGENUM_NOT_HIT;
-		}
-		else {
-			//write page in buffer pool and update MRU
-			FrameOffset offset = itrFrame2->second;
-			memcpy(buffer + offset, data, PAGE_SIZE * sizeof(char));
-			updateMRU();
-			return SUCC;
-		}
-	}
-	return SUCC;
-}
-
-// Load pages to the memory
-RC BufferManager::loadPages(FileHandle *fileHandle, PageNum startPageNum, unsigned numPages2Load) {
-	//get the number of pages
-	unsigned numPages = fileHandle->getNumberOfPages();
-	numPages = startPageNum < numPages ? numPages-startPageNum : 0;
-	numPages2Load = numPages2Load > numPages ? numPages: numPages2Load;
-	numPages2Load = numPages2Load > MAX_PAGE_IN_MEM ? MAX_PAGE_IN_MEM : numPages2Load;
-	if (numPages2Load + getNumTotalPages() > MAX_PAGE_IN_MEM) {
-		unsigned numPagesReplaced = numPages2Load + getNumTotalPages() - MAX_PAGE_IN_MEM;
-		for (int i = 0; i < numPagesReplaced; ++i) {
-			FrameOffset offset = queueMRU.front();
-			queueMRU.pop_back();
-			availableFrameOffset.push_front(offset);
-			// delete entry in tables
-			InverseFrameTable::iterator itr = inverseFrameTable.find(offset);
-			frameTable[itr->second.fileName].erase(itr->second.pageNum);
-			if (frameTable[itr->second.fileName].empty())
-				frameTable.erase(itr->second.fileName);
-			inverseFrameTable.erase(itr);
-		}
-	}
-
-	for (int i = startPageNum; i < startPageNum + numPages2Load; ++i) {
-		if (i >= numPages)
-			break;
-		if (existPage(fileHandle->fileName, i))
-			continue;
-		FrameOffset offset = availableFrameOffset.front();
-		availableFrameOffset.pop_front();
-		FrameInfo frameInfo(fileHandle->fileName, i);
-		inverseFrameTable.insert(pair<FrameOffset, FrameInfo>(offset, frameInfo));
-		frameTable[fileHandle->fileName][i] = offset;
-		fileHandle->readPage(i, buffer + offset);
-	}
-	return SUCC;
-}
-// update most recently used page
-void BufferManager::updateMRU() {
-	FrameOffset offset = queueMRU.front();
-	queueMRU.pop_front();
-	queueMRU.push_back(offset);
-}
-// number of used pages
-unsigned BufferManager::getNumTotalPages() {
-	return queueMRU.size();
-}

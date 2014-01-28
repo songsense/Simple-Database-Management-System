@@ -36,8 +36,14 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
     return PagedFileManager::instance()->closeFile(fileHandle);
 }
 // Given a record descriptor, insert a record into a given file identifed by the provided handle.
+// Given a record descriptor, insert a record into a given file identifed by the provided handle.
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const void *data, RID &rid) {
+	return insertRecordWithVersion(fileHandle, recordDescriptor, data, rid, 0);
+}
+RC RecordBasedFileManager::insertRecordWithVersion(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor,
+		const void *data, RID &rid, const char &ver) {
 	// get record size to be inserted
 	// translate the data to the raw data version
 	unsigned recordSize = translateRecord2Raw(recordConent, data, recordDescriptor);
@@ -52,18 +58,26 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		return RECORD_FILE_HANDLE_NOT_FOUND;
 	}
 	// obtain the page number
-	PageNum pageNum = 0;
+	PageNum pageNum = -1;
 	RC rc = itr->second.getPageSpaceInfo(recordDirectorySize, pageNum);
 	if (rc == FILE_SPACE_EMPTY || rc == FILE_SPACE_NO_SPACE) {
 		// the record is too big to fit into the page
 		// create a new page
 		createEmptyPage(pageContent);
 		rc = fileHandle.appendPage(pageContent);
-		if (rc != SUCC)
+		if (rc != SUCC) {
 			cerr << "cannot append a new page" << endl;
+			return rc;
+		}
 		// obtain the newly allocated page's num
 		pageNum = fileHandle.getNumberOfPages()-1;
+		// push the page into the queue
+		unsigned freeSpaceSize = getFreeSpaceSize(pageContent);
+		itr->second.pushPageSpaceInfo(freeSpaceSize, pageNum);
 	}
+	// TODO
+	//if (pageNum < TABLE_PAGES_NUM)
+	//	exit(01);
 	// load the page data
 	rc = fileHandle.readPage(pageNum, pageContent);
 
@@ -88,7 +102,9 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 	// update the directory of the slot
 	SlotDir slotDir;
 	slotDir.recordLength = recordSize;
-	slotDir.recordOffset = originalStartPoint;
+	slotDir.recordOffset = (FieldAddress)originalStartPoint -
+			(FieldAddress)pageContent;
+	slotDir.version = ver;
 	rc = setSlotDir(pageContent, slotDir, numSlots+1);
 	if (rc != SUCC) {
 		cerr << "fail to update the director of the slot " << rc << endl;
@@ -110,11 +126,18 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 // Given a record descriptor, read the record identified by the given rid.
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const RID &rid, void *data) {
+	char ver;
+	return readRecordWithVersion(fileHandle, recordDescriptor, rid, data, ver);
+}
+RC RecordBasedFileManager::readRecordWithVersion(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor,
+		const RID &rid, void *data, char &ver) {
 	RC rc = fileHandle.readPage(rid.pageNum, pageContent);
 	if (rc != SUCC) {
 		cerr << "Reading Page error: " << rc << endl;
 		return rc;
 	}
+
 	// get slot directory
 	SlotDir slotDir;
 	rc = getSlotDir(pageContent, slotDir, rid.slotNum);
@@ -122,11 +145,106 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 		cerr << " Reading slot directory error: " << rc << endl;
 		return rc;
 	}
-	char *slot = (char *)slotDir.recordOffset;
+
+	// check if the data has been deleted
+	if (slotDir.recordLength == RECORD_DEL) {
+		data = NULL;
+		return RC_RECORD_DELETED;
+	}
+
+	// check if the data has been forwarded
+	if (slotDir.recordLength == RECORD_FORWARD) {
+		// get the forward RID
+		RID forwardRID;
+		getForwardRID(forwardRID, slotDir.recordOffset);
+		// goto forwarded RID to read the data
+		return readRecordWithVersion(fileHandle, recordDescriptor,
+				forwardRID, data, ver);
+	}
+
+	// get the slot directory info
+	char *slot = (char *)pageContent + slotDir.recordOffset;
+	ver = slotDir.version;
 	// translate the slot record to printable data
 	translateRecord2Printable((void *)slot, data, recordDescriptor);
     return SUCC;
 }
+// delete all records
+RC RecordBasedFileManager::deleteRecords(FileHandle &fileHandle) {
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	RC rc;
+	for (PageNum i = TABLE_PAGES_NUM; i < totalPageNum; ++i) {
+		// read the page
+		rc = fileHandle.readPage(i, pageContent);
+		if (rc != SUCC)
+			return rc;
+		// set the free space to the top of the page
+		setFreeSpaceStartPoint(pageContent, pageContent);
+		// set the number of slot directory to be zero
+		rc = setNumSlots(pageContent, 0);
+		if (rc != SUCC)
+			return rc;
+		// write the page
+		rc = fileHandle.writePage(i, pageContent);
+		if (rc != SUCC)
+			return rc;
+	}
+
+
+	// refresh the space manager
+	// get the first page that is available
+	// first find the file handle. determine if it is existed
+	PagedFileManager * pmfInstance = PagedFileManager::instance();
+	MultipleFilesSpaceManager::iterator itr = pmfInstance->filesSpaceManager.find(fileHandle.fileName);
+	if (itr == pmfInstance->filesSpaceManager.end()) {
+		return RECORD_FILE_HANDLE_NOT_FOUND;
+	}
+	// empty the page space queue
+	itr->second.clearPageSpaceInfo();
+	// insert the new page space
+	for (PageNum i = TABLE_PAGES_NUM; i < totalPageNum; ++i) {
+		rc = itr->second.pushPageSpaceInfo(getEmptySpaceSize(), i);
+		if (rc != SUCC)
+			return rc;
+	}
+	return SUCC;
+}
+// delete specific record
+RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor, const RID &rid) {
+	return -1;
+}
+// update the record without changing the rid
+RC RecordBasedFileManager::RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor,
+		const void *data, const RID &rid) {
+	return -1;
+}
+RC RecordBasedFileManager::reorganizePage(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor, const unsigned pageNumber) {
+	return -1;
+}
+// scan returns an iterator to allow the caller to go through the results one by one.
+RC RecordBasedFileManager::scan(FileHandle &fileHandle,
+    const vector<Attribute> &recordDescriptor,
+    const string &conditionAttribute,
+    const CompOp compOp,                  // comparision type such as "<" and "="
+    const void *value,                    // used in the comparison
+    const vector<string> &attributeNames, // a list of projected attributes
+    RBFM_ScanIterator &rbfm_ScanIterator) {
+	return -1;
+}
+// reorganize the database
+RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor) {
+	return -1;
+}
+
+
+
+/*
+ * Tools
+ */
 // This is a utility method that will be mainly used for debugging/testing.
 // It should be able to interpret the bytes of each record using the passed record descriptor and then print its content to the screen.
 RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor,
@@ -172,7 +290,7 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
 	return SUCC;
 }
 // Translate printable version to raw version
-// Note: without header address
+// Note: record size is the size of the record in the page exclude the rid size
 unsigned RecordBasedFileManager::translateRecord2Raw(void *raw,
 		const void *formatted,
 		const vector<Attribute> &rD) {
@@ -182,12 +300,13 @@ unsigned RecordBasedFileManager::translateRecord2Raw(void *raw,
 	char *formattedData = (char *)formatted;
 
 	unsigned numFields = rD.size();
-	FieldAddress startPointAddress = (FieldAddress)(rawData + sizeof(FieldAddress) +
+	// Note here the start record address is an offset
+	FieldOffset startPointAddress = (FieldOffset)(sizeof(FieldOffset) +
 			numFields * sizeof(FieldOffset));
-	memcpy(rawData, &startPointAddress, sizeof(FieldAddress));
-	recordSize += sizeof(FieldAddress) + numFields * sizeof(FieldOffset);
+	memcpy(rawData, &startPointAddress, sizeof(FieldOffset));
+	recordSize += sizeof(FieldOffset) + numFields * sizeof(FieldOffset);
 	rawData += recordSize;
-	rawField += sizeof(FieldAddress);
+	rawField += sizeof(FieldOffset);
 
 	FieldOffset offset = 0;
 	for (int i = 0; i < numFields; ++i) {
@@ -231,7 +350,7 @@ void RecordBasedFileManager::translateRecord2Printable(const void *raw,
 		const vector<Attribute> &rD) {
 	char *rawData = (char *)raw;
 	char *formattedData = (char *)formatted;
-	rawData += sizeof(FieldAddress);
+	rawData += sizeof(FieldOffset);
 	FieldOffset *fieldSizes = new FieldOffset[rD.size()];
 	FieldOffset lastOffset = 0;
 	for (int i = 0; i < rD.size(); ++i) {
@@ -304,6 +423,9 @@ unsigned RecordBasedFileManager::getFreeSpaceSize(void *page) {
 	space = space - getNumSlots(page) * sizeof(SlotDir) - sizeof(SlotNum) - sizeof(FieldAddress);
 	return space;
 }
+unsigned RecordBasedFileManager::getEmptySpaceSize() {
+	return PAGE_SIZE - sizeof(SlotNum) - sizeof(FieldAddress);
+}
 // get/set the number of slots
 SlotNum RecordBasedFileManager::getNumSlots(void *page) {
 	char *p = (char *)page + PAGE_SIZE - sizeof(FieldAddress) - sizeof(SlotNum);
@@ -336,4 +458,12 @@ RC RecordBasedFileManager::setSlotDir(void *page, const SlotDir &slotDir, const 
 				sizeof(FieldAddress) - sizeof(SlotNum) - (nth)*sizeof(SlotDir);
 	memcpy(nthSlotDir, &slotDir, sizeof(SlotDir));
 	return SUCC;
+}
+// get the forwarded page number and slot id
+void RecordBasedFileManager::getForwardRID(RID &rid, FieldAddress offset) {
+	// Note the size of a page num is sizeof(unsigned)
+	char *data = (char *)&offset;
+	memcpy(&(rid.pageNum), data, sizeof(unsigned));
+	data += sizeof(unsigned);
+	memcpy(&(rid.slotNum), data, sizeof(unsigned));
 }

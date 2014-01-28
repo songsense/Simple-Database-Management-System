@@ -10,6 +10,11 @@
 
 using namespace std;
 
+// define a bunch of types
+typedef unsigned long FieldAddress; 		// for address
+typedef unsigned short FieldOffset;
+typedef unsigned short SlotNum;
+
 // define return code for record manager
 #define RECORD_FILE_HANDLE_NOT_FOUND 1000
 #define RECORD_OVERFLOW 1001
@@ -22,14 +27,25 @@ typedef struct
   unsigned pageNum;
   unsigned slotNum;
 } RID;
+
+
 // slot directory: saved in pages
 typedef struct {
-	void * recordOffset;
+	FieldAddress recordOffset;
 	unsigned recordLength;
+	char version;
 } SlotDir;
-typedef unsigned long FieldAddress;
-typedef unsigned short FieldOffset;
-typedef unsigned short SlotNum;
+
+// define delete/update mode
+// NOTE here, we use the C++ grammar for we need operate memory
+// must be extra careful
+const unsigned RECORD_DEL = -1;
+const unsigned RECORD_FORWARD = -2;
+// define return code when data is deleted/updated
+#define RC_RECORD_DELETED 40
+#define RC_RECORD_FORWARDED 41
+
+
 // Attribute
 typedef enum { TypeInt = 0, TypeReal, TypeVarChar } AttrType;
 
@@ -99,16 +115,24 @@ public:
   //     For varchar: use 4 bytes to store the length of characters, then store the actual characters.
   //  !!!The same format is used for updateRecord(), the returned data of readRecord(), and readAttribute()
   RC insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid);
+  RC insertRecordWithVersion(FileHandle &fileHandle,
+		  const vector<Attribute> &recordDescriptor,
+		  const void *data, RID &rid, const char &ver);
 
   RC readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+  RC readRecordWithVersion(FileHandle &fileHandle,
+		  const vector<Attribute> &recordDescriptor,
+		  const RID &rid, void *data, char &ver);
   
   // This method will be mainly used for debugging/testing
   RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
   // Translate record to printable version
   void translateRecord2Printable(const void *rawData, void *formattedData, const vector<Attribute> &recordDescriptor);
   // Translate printable version to raw version
+  // Note: record size is the size of the record
+  // in the page exclude the rid size
   unsigned translateRecord2Raw(void *rawData, const void *formattedData, const vector<Attribute> &recordDescriptor);
-private:
+
   // create an empty page
   void createEmptyPage(void *page);
   // get the size of a record & it's directory
@@ -119,6 +143,7 @@ private:
   void setFreeSpaceStartPoint(void *page, void * startPoint);
   // calculate the size of free space
   unsigned getFreeSpaceSize(void *page);
+  unsigned getEmptySpaceSize();
   // get/set the number of slots
   SlotNum getNumSlots(void *page);
   RC setNumSlots(void *page, SlotNum num);
@@ -127,6 +152,8 @@ private:
   RC getSlotDir(void *page, SlotDir &slotDir, const SlotNum &nth);
   // set directory of nth slot
   RC setSlotDir(void *page, const SlotDir &slotDir, const SlotNum &nth);
+  // get the forwarded page number and slot id
+  void getForwardRID(RID &rid, FieldAddress offset);
   char pageContent[PAGE_SIZE];
   char recordConent[PAGE_SIZE];
 /**************************************************************************************************************************************************************

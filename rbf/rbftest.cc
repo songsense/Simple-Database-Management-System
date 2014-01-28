@@ -795,7 +795,7 @@ int RBFTest_11(RecordBasedFileManager *rbfm) {
     // test file handle 2
 
     // Insert a record into a file
-    prepareRecord(3, "Tom", 28, 180.1, 9000, record, &recordSize);
+    prepareRecord(0, "", 28, 180.1, 9000, record, &recordSize);
     cout << "Print Data:" << endl;
     rbfm->printRecord(recordDescriptor, record);
     cout << "Insert Data:" << endl;
@@ -857,6 +857,150 @@ void RBFTest_0() {
 	}
 }
 
+int RBFTest_12( RecordBasedFileManager *rbfm) {
+    // Functions tested
+    // 1. Create Record-Based File
+    // 2. Open Record-Based File (fileHandle)
+	// 3. Open Record-Based File (fileHandle1)
+    // 4. Insert Record (fileHandle)
+    // 5. Read Record (fileHandle)
+	// 6. Read Record (fileHandle1)
+	// 7. Insert Record (fileHandle1)
+	// 8. Read Record (fileHandle1)
+	// 9. Close Record-Based File (fileHandle1)
+	// 10. Read Record (fileHandle)
+    // 11. Close Record-Based File (fileHandle)
+    // 12. Destroy Record-Based File
+    cout << "****In RBF Test Case 11****" << endl;
+
+    RC rc;
+    string fileName = "test_3";
+
+    // Create a file named "test_3"
+    rc = rbfm->createFile(fileName.c_str());
+    assert(rc == success);
+
+    if(FileExists(fileName.c_str()))
+    {
+        cout << "File " << fileName << " has been created." << endl ;
+    }
+    else
+    {
+        cout << "Failed to create file!" << endl ;
+        cout << "Test Case 8 Failed!" << endl << endl;
+        return -1;
+    }
+
+    // Open the file "test_3"
+    FileHandle fileHandle;
+    FileHandle fileHandle1;
+    //Open Record-Based File (fileHandle)
+    rc = rbfm->openFile(fileName.c_str(), fileHandle);
+    //Open Record-Based File (fileHandle1)
+    rc = rbfm->openFile(fileName.c_str(), fileHandle1);
+
+
+
+    RID rid;
+    int recordSize = 0;
+    void *record = malloc(100);
+    void *returnedData = malloc(100);
+    void *returnedData1 = malloc(100);
+
+    vector< Attribute> recordDescriptor;
+    createRecordDescriptor(recordDescriptor);
+
+    // Insert Record (fileHandle)
+    prepareRecord(6, "Peters", 24, 170.1, 5000, record, &recordSize);
+    cout << "Insert Data:" << endl;
+    rbfm->printRecord(recordDescriptor, record);
+
+    rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
+    assert(rc == success);
+
+
+    // Given the rid, read the record from file
+    //Read Record (fileHandle)
+    rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
+    assert(rc == success);
+    //Read Record (fileHandle)
+    rc = rbfm->readRecord(fileHandle1, recordDescriptor, rid, returnedData1);
+    assert(rc == success);
+
+    cout << "Returned Data:" << endl;
+    rbfm->printRecord(recordDescriptor, returnedData);
+    rbfm->printRecord(recordDescriptor, returnedData1);
+
+    // Compare whether the two memory blocks are the same
+    if( memcmp(record, returnedData, recordSize) != 0)
+    {
+       cout << "Test Case 11 Failed!" << endl << endl;
+        free(record);
+        free(returnedData);
+        return -1;
+    }
+
+    if( memcmp(record, returnedData1, recordSize) != 0)
+     {
+        cout << "Test Case 11 Failed!" << endl << endl;
+            free(record);
+            free(returnedData1);
+            return -1;
+     }
+
+    //Insert Record (fileHandle1)
+    prepareRecord(5, "Hters" , 100, 170.1, 2000, record, &recordSize);
+    cout << "Insert Data:" << endl;
+    rbfm->printRecord(recordDescriptor, record);
+
+    rc = rbfm->insertRecord(fileHandle1, recordDescriptor, record, rid);
+    assert(rc == success);
+
+    //Read Record (fileHandle1)
+    rc = rbfm->readRecord(fileHandle1, recordDescriptor, rid, returnedData1);
+    assert(rc == success);
+    //Close Record-Based File (fileHandle1)
+    rc= rbfm->closeFile(fileHandle1);
+    assert(rc == success);
+    //Read Record (fileHandle)
+    rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
+    assert(rc == success);
+
+    cout << "Returned Data:" << endl;
+    rbfm->printRecord(recordDescriptor, returnedData);
+    rbfm->printRecord(recordDescriptor, returnedData1);
+
+    if( memcmp(record, returnedData, recordSize) != 0)
+    {
+        cout << "Test Case 11 Failed!" << endl << endl;
+            free(record);
+            free(returnedData);
+            return -1;
+     }
+
+      if( memcmp(record, returnedData1, recordSize) != 0)
+     {
+        cout << "Test Case 11 Failed!" << endl << endl;
+            free(record);
+            free(returnedData1);
+            return -1;
+     }
+
+    // Close the file "test_3"
+    rc = rbfm->closeFile(fileHandle);
+        assert(rc == success);
+
+    // Destroy File
+    rc = rbfm->destroyFile(fileName.c_str());
+    assert(rc == success);
+
+    free(record);
+    free(returnedData);
+    cout << "Test Case 12 Passed!" << endl << endl;
+
+    return 0;
+}
+
 int main()
 {
 	RBFTest_0();
@@ -887,6 +1031,8 @@ int main()
     RBFTest_10(rbfm, rids, sizes);
 
     RBFTest_11(rbfm);
+
+    RBFTest_12(rbfm);
 
     return 0;
 }
