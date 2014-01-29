@@ -91,8 +91,8 @@ public:
   ~RBFM_ScanIterator() {};
 
   // "data" follows the same format as RecordBasedFileManager::insertRecord()
-  RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
-  RC close() { return -1; };
+  RC getNextRecord(RID &rid, void *data);
+  RC close();
 };
 
 
@@ -126,6 +126,7 @@ public:
   
   // This method will be mainly used for debugging/testing
   RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
+
   // Translate record to printable version
   void translateRecord2Printable(const void *rawData, void *formattedData, const vector<Attribute> &recordDescriptor);
   // Translate printable version to raw version
@@ -153,9 +154,10 @@ public:
   // set directory of nth slot
   RC setSlotDir(void *page, const SlotDir &slotDir, const SlotNum &nth);
   // get the forwarded page number and slot id
-  void getForwardRID(RID &rid, FieldAddress offset);
-  char pageContent[PAGE_SIZE];
-  char recordConent[PAGE_SIZE];
+  void getForwardRID(RID &rid, const FieldAddress &offset);
+  // set the forwarded page number and slot id
+  void setForwardRID(const RID &rid, FieldAddress &offset);
+
 /**************************************************************************************************************************************************************
 ***************************************************************************************************************************************************************
 IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) are NOT required to be implemented for part 1 of the project
@@ -168,6 +170,9 @@ public:
 
   // Assume the rid does not change after update
   RC updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid);
+  RC updateRecordWithVersion(FileHandle &fileHandle,
+		  const vector<Attribute> &recordDescriptor,
+		  const void *data, const RID &rid, const char &ver);
 
   RC readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string attributeName, void *data);
 
@@ -195,6 +200,8 @@ protected:
 
 private:
   static RecordBasedFileManager *_rbf_manager;
+  char pageContent[PAGE_SIZE];
+  char recordConent[PAGE_SIZE];
 };
 
 #endif

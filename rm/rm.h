@@ -47,8 +47,8 @@ public:
   ~RM_ScanIterator() {};
 
   // "data" follows the same format as RelationManager::insertTuple()
-  RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
-  RC close() { return -1; };
+  RC getNextTuple(RID &rid, void *data);
+  RC close();
 };
 
 
@@ -61,6 +61,9 @@ public:
   RC createTable(const string &tableName, const vector<Attribute> &attrs);
 
   RC deleteTable(const string &tableName);
+
+  RC openTable(const string &tableName, FileHandle &fileHandle);
+  RC closeTable(const string &tableName, FileHandle &fileHandle);
 
   RC getAttributes(const string &tableName, vector<Attribute> &attrs);
 
@@ -112,7 +115,9 @@ private:
 		  FileHandle &fileHandle);
   // tools
   // get the version of the number
+  // TODO different tables have different descriptors and version numbers
   VersionNumber getVersionNumber(void *page);
+  VersionNumber getVersionNumber();
   // set the version of the number
   RC setVersionNumber(void *page, VersionNumber ver);
   // get i'th version information
@@ -124,12 +129,14 @@ private:
   // translate a record into an attribute
   void translateRecord2Attribte(Attribute & attr, const void *record);
   // create attribute descriptor for attribute
-  void createRecordDescriptor(vector<Attribute> &recordDescriptor);
+  void createAttrRecordDescriptor(vector<Attribute> &recordDescriptor);
 
   char page[PAGE_SIZE];
   char record[PAGE_SIZE];
   vector<Attribute> recordAttributeDescriptor;
+  // TODO different tables have different descriptors and version numbers
   vector<Attribute> currentRecordDescriptor;
+  VersionNumber currentVersionNumber;
 };
 
 #endif

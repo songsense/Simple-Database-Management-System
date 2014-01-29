@@ -3,6 +3,13 @@
 
 RelationManager* RelationManager::_rm = 0;
 
+RC RM_ScanIterator::getNextTuple(RID &rid, void *data) {
+	return RM_EOF;
+}
+RC RM_ScanIterator::close() {
+	return -1;
+}
+
 RelationManager* RelationManager::instance()
 {
     if(!_rm)
@@ -14,7 +21,7 @@ RelationManager* RelationManager::instance()
 RelationManager::RelationManager()
 {
 	// prepare the data of attributes
-	createRecordDescriptor(recordAttributeDescriptor);
+	createAttrRecordDescriptor(recordAttributeDescriptor);
 }
 
 RelationManager::~RelationManager()
@@ -61,11 +68,11 @@ RC RelationManager::formatFirst2Page(const string &tableName,
 	}
 
 	// set the free space such that users never use the page
-	for (int i = 0; i < TABLE_PAGES_NUM-1; ++i) {
+	for (int i = 0; i < TABLE_PAGES_NUM; ++i) {
 		// get the page
 		fileHandle.readPage(i, page);
 		// set the free space such that users never use the page
-		rbfm->setFreeSpaceStartPoint(page, page);
+		rbfm->setFreeSpaceStartPoint(page, page+PAGE_SIZE);
 		// write page to the disk
 		fileHandle.writePage(i, page);
 	}
@@ -114,7 +121,7 @@ RC RelationManager::deleteTable(const string &tableName)
 
     return rc;
 }
-// NOTE: this method must be invoked when adding/dropping attributes
+// TODO NOTE: this method must be invoked when adding/dropping attributes
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
@@ -162,6 +169,28 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     return SUCC;
 }
 
+RC RelationManager::openTable(const string &tableName, FileHandle &fileHandle) {
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	RC rc = rbfm->openFile(tableName, fileHandle);
+	if(rc != SUCC) {
+		cerr << "Open Table: error open file" << endl;
+		return rc;
+	}
+	rc = fileHandle.readPage(0, page);
+	if (rc != SUCC) {
+		cerr << "Open Table: error read the page" << endl;
+		return rc;
+	}
+	// get the current version
+	currentVersionNumber = getVersionNumber(page);
+	// get the current record descriptor
+
+}
+
+RC RelationManager::closeTable(const string &tableName, FileHandle &fileHandle) {
+
+}
+
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
@@ -174,7 +203,8 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 		return rc;
 
 	// insert the record
-	rc = rbfm->insertRecord(fileHandle, currentRecordDescriptor, data, rid);
+	rc = rbfm->insertRecordWithVersion(fileHandle,
+			currentRecordDescriptor, data, rid, currentVersionNumber);
 	if (rc != SUCC)
 		return rc;
 
@@ -189,31 +219,37 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 RC RelationManager::deleteTuples(const string &tableName)
 {
     return -1;
+    // TODO
 }
 
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
     return -1;
+    // TODO
 }
 
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
 {
     return -1;
+    // TODO
 }
 
 RC RelationManager::readTuple(const string &tableName, const RID &rid, void *data)
 {
     return -1;
+    // TODO
 }
 
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
 {
     return -1;
+    // TODO
 }
 
 RC RelationManager::reorganizePage(const string &tableName, const unsigned pageNumber)
 {
     return -1;
+    // TODO
 }
 
 RC RelationManager::scan(const string &tableName,
@@ -224,23 +260,27 @@ RC RelationManager::scan(const string &tableName,
       RM_ScanIterator &rm_ScanIterator)
 {
     return -1;
+    // TODO
 }
 
 // Extra credit
 RC RelationManager::dropAttribute(const string &tableName, const string &attributeName)
 {
     return -1;
+    // TODO
 }
 
 // Extra credit
 RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 {
     return -1;
+    // TODO
 }
 
 // Extra credit
 RC RelationManager::reorganizeTable(const string &tableName)
 {
+	// TODO
     return -1;
 }
 
@@ -249,16 +289,21 @@ RC RelationManager::reorganizeTable(const string &tableName)
 VersionNumber RelationManager::getVersionNumber(void *page) {
 	return *((VersionNumber *)page);
 }
+VersionNumber RelationManager::getVersionNumber() {
+	return currentVersionNumber;
+}
 // set the version of the number
 RC RelationManager::setVersionNumber(void *page, VersionNumber ver) {
 	if (ver >= MAX_VER)
 		return VERSION_OVERFLOW;
 	memcpy(page, &ver, sizeof(VersionNumber));
+	currentVersionNumber = ver;
 	return SUCC;
 }
 // get i'th version information
 RC RelationManager::get_ithVersionInfo(void *page, VersionNumber ver,
 		VersionInfoFrame &versionInfoFrame) {
+	// TODO data is stored as an record Need change
 	if (ver >= MAX_VER)
 		return VERSION_OVERFLOW;
 	char *data = (char *)page;
@@ -269,6 +314,7 @@ RC RelationManager::get_ithVersionInfo(void *page, VersionNumber ver,
 // set i'th version Information
 RC RelationManager::set_ithVersionInfo(void *page, VersionNumber ver,
 		const VersionInfoFrame &versionInfoFrame) {
+	// TODO data is stored as an record Need change
 	if (ver >= MAX_VER)
 		return VERSION_OVERFLOW;
 	char *data = (char *)page;
@@ -347,7 +393,7 @@ void RelationManager::translateRecord2Attribte(Attribute & attr, const void *rec
 }
 
 // create attribute descriptor for attribute
-void RelationManager::createRecordDescriptor(vector<Attribute> &recordDescriptor) {
+void RelationManager::createAttrRecordDescriptor(vector<Attribute> &recordDescriptor) {
 	Attribute attr;
 	attr.name = "AttrName";
 	attr.type = TypeVarChar;
