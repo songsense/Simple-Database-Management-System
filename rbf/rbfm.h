@@ -95,6 +95,83 @@ public:
   RC close();
 };
 
+/*
+ * 		Middleware Version Manager
+ */
+// version information
+struct VersionInfoFrame {
+	unsigned attrLength;
+	unsigned short attrColumn;
+	char attrType;
+	char verChangeAction;
+};
+// define maximum version
+#define MAX_VER 100
+// define error code
+#define VERSION_TABLE_NOT_FOUND 50
+#define VERSION_OVERFLOW 51
+#define ATTR_OVERFLOW 52
+
+// define char as version
+typedef unsigned char VersionNumber;
+// define record descriptor
+typedef vector<Attribute> RecordDescriptor;
+// define member types
+typedef unordered_map<string, vector<RecordDescriptor> > AttrMap;
+typedef unordered_map<string, VersionNumber> VersionMap;
+// define the class
+class VersionManager {
+private:
+	AttrMap attrMap;
+	VersionMap versionMap;
+	static VersionManager *_ver_manager;
+public:
+	VersionManager();
+	// set up a table's attributes and its version
+	RC insertTableVersionInfo(const string &tableName, FileHandle &fileHandle);
+	// get the attributes of a version
+	RC getAttributes(const string &tableName, vector<Attribute> &attrs,
+			const VersionNumber ver);
+	// add an attribute
+	RC addAttribute(const string &tableName, const Attribute &attr, FileHandle &fileHandle);
+	// drop an attribute
+	RC dropAttribute(const string &tableName, const string &atttributeName, FileHandle &fileHandle);
+
+	void eraseTableVersionInfo(const string &tableName);
+	void eraseAllInfo();
+	static VersionManager* instance();
+
+	RC get_ithVersionInfo(void *page, VersionNumber ver,
+			VersionInfoFrame &versionInfoFrame);
+	RC set_ithVersionInfo(void *page, VersionNumber ver,
+			const VersionInfoFrame &versionInfoFrame);
+	// tools
+	RC formatFirst2Page(const string &tableName,
+			const vector<Attribute> &attrs,
+			FileHandle &fileHandle);
+	// set page to be empty
+	RC setPageEmpty(void *page);
+	// reset the attribute pages
+	RC resetAttributePages(const vector<Attribute> &attrs, FileHandle &fileHandle);
+
+	// get/set the version of the number
+	RC setVersionNumber(void *page, VersionNumber ver);
+	RC getVersion(const string &tableName, VersionNumber &ver);
+	// translate an attribute into a record
+	unsigned translateAttribte2Record(const Attribute & attr, void *record);
+	// translate a record into an attribute
+	void translateRecord2Attribte(Attribute & attr, const void *record);
+	// create attribute descriptor for attribute
+	vector<Attribute> recordAttributeDescriptor;
+	void createAttrRecordDescriptor(vector<Attribute> &recordDescriptor);
+private:
+	char page[PAGE_SIZE];
+	char record[PAGE_SIZE];
+};
+
+/*
+ * 			Record based file manager
+ */
 
 class RecordBasedFileManager
 {

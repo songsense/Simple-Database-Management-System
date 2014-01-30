@@ -2,18 +2,8 @@
 #include "rbfm.h"
 
 RecordBasedFileManager* RecordBasedFileManager::_rbf_manager = 0;
+VersionManager* VersionManager::_ver_manager = 0;
 
-/*
- * Iterator
- */
-RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
-	// TODO
-	return RBFM_EOF;
-}
-RC RBFM_ScanIterator::close() {
-	// TODO
-	return -1;
-}
 /*
  * Record based file manager
  */
@@ -21,7 +11,7 @@ RecordBasedFileManager* RecordBasedFileManager::instance()
 {
     if(!_rbf_manager)
         _rbf_manager = new RecordBasedFileManager();
-
+    VersionManager::instance();
     return _rbf_manager;
 }
 
@@ -452,6 +442,16 @@ RC RecordBasedFileManager::updateRecordWithVersion(FileHandle &fileHandle,
 
 	return SUCC;
 }
+
+// read values associating with the attribute
+RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor,
+		const RID &rid, const string attributeName, void *data) {
+	//TODO
+
+	return -1;
+}
+
 RC RecordBasedFileManager::reorganizePage(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const unsigned pageNumber) {
 	RC rc;
@@ -526,7 +526,17 @@ RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
 	// TODO
 }
 
-
+/*
+ * Iterator
+ */
+RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+	// TODO
+	return RBFM_EOF;
+}
+RC RBFM_ScanIterator::close() {
+	// TODO
+	return -1;
+}
 
 /*
  * Tools
@@ -726,6 +736,7 @@ RC RecordBasedFileManager::setNumSlots(void *page, SlotNum num) {
 	memcpy(p, &num, sizeof(SlotNum));
 	return SUCC;
 }
+
 // get directory of nth slot
 RC RecordBasedFileManager::getSlotDir(void *page, SlotDir &slotDir, const SlotNum &nth) {
 	if (nth > getNumSlots(page))
@@ -759,4 +770,350 @@ void RecordBasedFileManager::setForwardRID(const RID &rid, FieldAddress &offset)
 	memcpy(offset2Filled, &(rid.pageNum), sizeof(unsigned));
 	offset2Filled += sizeof(unsigned);
 	memcpy(offset2Filled, &(rid.slotNum), sizeof(unsigned));
+}
+
+
+/*
+ *		Middleware: Version Manager
+ */
+VersionManager::VersionManager() {
+	createAttrRecordDescriptor(recordAttributeDescriptor);
+}
+VersionManager* VersionManager::instance() {
+    if(!_ver_manager)
+    	_ver_manager = new VersionManager();
+
+    return _ver_manager;
+}
+// set up a table's attributes and its version
+RC VersionManager::insertTableVersionInfo(const string &tableName,
+		FileHandle &fileHandle) {
+	//TODO
+	return -1;
+}
+// get the attributes of a version
+RC VersionManager::getAttributes(const string &tableName, vector<Attribute> &attrs,
+		const VersionNumber ver) {
+	AttrMap::iterator itr = attrMap.find(tableName);
+	if (itr == attrMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+	VersionMap::iterator itr_1 = versionMap.find(tableName);
+	if (itr_1 == versionMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+
+	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
+	attrs = recordDescriptorArray[ver];
+
+	return SUCC;
+}
+// add an attribute
+RC VersionManager::addAttribute(const string &tableName,
+		const Attribute &attr, FileHandle &fileHandle) {
+	AttrMap::iterator itr = attrMap.find(tableName);
+	if (itr == attrMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+	VersionMap::iterator itr_1 = versionMap.find(tableName);
+	if (itr_1 == versionMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+	VersionNumber &currentVersion = itr_1->second;
+	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
+
+	// update the version number
+	currentVersion = (currentVersion + 1) % MAX_VER;
+
+	// update record descriptor
+	vector<Attribute> &recordDescriptor = recordDescriptorArray[currentVersion];
+	recordDescriptor.push_back(attr);
+	//TODO write to page
+	return SUCC;
+}
+// drop an attribute
+RC VersionManager::dropAttribute(const string &tableName,
+		const string &attributeName, FileHandle &fileHandle) {
+	AttrMap::iterator itr = attrMap.find(tableName);
+	if (itr == attrMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+	VersionMap::iterator itr_1 = versionMap.find(tableName);
+	if (itr_1 == versionMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+	VersionNumber &currentVersion = itr_1->second;
+	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
+	vector<Attribute> recordDescriptor = recordDescriptorArray[currentVersion];
+
+	// update the version number
+	currentVersion = (currentVersion + 1) % MAX_VER;
+
+	// update record descriptor
+	for (vector<Attribute>::iterator itrAtt = recordDescriptor.begin();
+			itrAtt != recordDescriptor.end(); ++itrAtt) {
+		if (itrAtt->name == attributeName) {
+			recordDescriptor.erase(itrAtt);
+			break;
+		}
+	}
+	recordDescriptorArray[currentVersion] = recordDescriptor;
+	//TODO write to page
+	return SUCC;
+}
+
+void VersionManager::eraseTableVersionInfo(const string &tableName) {
+	AttrMap::iterator itr = attrMap.find(tableName);
+	if (itr != attrMap.end()) {
+		attrMap.erase(itr);
+	}
+	VersionMap::iterator itr_1 = versionMap.find(tableName);
+	if (itr_1 != versionMap.end()) {
+		versionMap.erase(itr_1);
+	}
+}
+void VersionManager::eraseAllInfo() {
+	attrMap.clear();
+	attrMap.clear();
+}
+// get i'th version information
+RC VersionManager::get_ithVersionInfo(void *page, VersionNumber ver,
+		VersionInfoFrame &versionInfoFrame) {
+	if (ver >= MAX_VER)
+		return VERSION_OVERFLOW;
+	char *data = (char *)page;
+	data += sizeof(VersionNumber) + ver * sizeof(VersionInfoFrame);
+	memcpy(&versionInfoFrame, data, sizeof(VersionInfoFrame));
+	return SUCC;
+}
+// set i'th version Information
+RC VersionManager::set_ithVersionInfo(void *page, VersionNumber ver,
+		const VersionInfoFrame &versionInfoFrame) {
+	if (ver >= MAX_VER)
+		return VERSION_OVERFLOW;
+	char *data = (char *)page;
+	data += sizeof(VersionNumber) + ver * sizeof(VersionInfoFrame);
+	memcpy(data, &versionInfoFrame, sizeof(VersionInfoFrame));
+	return SUCC;
+}
+
+// set the version of the number
+RC VersionManager::setVersionNumber(void *page, VersionNumber ver) {
+	if (ver >= MAX_VER)
+		return VERSION_OVERFLOW;
+	memcpy(page, &ver, sizeof(VersionNumber));
+	// TODO currentVersionNumber = ver;
+	return SUCC;
+}
+// get the version number
+RC VersionManager::getVersion(const string &tableName, VersionNumber &ver) {
+	VersionMap::iterator itr_1 = versionMap.find(tableName);
+	if (itr_1 != versionMap.end()) {
+		ver = itr_1->second;
+		return SUCC;
+	} else {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+}
+
+// translate an attribute into a record
+unsigned VersionManager::translateAttribte2Record(const Attribute & attr,
+		void *record) {
+	// the attribute of the data attribute is clear
+	// number of the attribute is 3
+	// the first is a varchar
+	// the rest are Int
+
+	unsigned recordSize = 0;
+
+	// set the offset to the record data
+	FieldOffset len = sizeof(FieldOffset)*4; // the first offset of the record
+	memcpy(record, &len, sizeof(FieldOffset));
+	recordSize += len;
+
+	// set the data start position
+	char *data = (char *)record + sizeof(FieldOffset) * 4;
+	// set the field start position
+	char *field = (char *)record + sizeof(FieldOffset);
+
+	// set the length of name field
+	len = attr.name.length();
+	memcpy(field, &len, sizeof(FieldOffset));
+	field += sizeof(FieldOffset);
+	// set the value of name field
+	memcpy(data, attr.name.c_str(), len);
+	data += len;
+	recordSize += len;
+
+	// set the length of the type field
+	len = sizeof(AttrType);
+	memcpy(field, &len, sizeof(FieldOffset));
+	field += sizeof(FieldOffset);
+	// set the value of the type field
+	memcpy(data, &(attr.type), sizeof(AttrType));
+	data += sizeof(AttrType);
+	recordSize += sizeof(AttrType);
+
+	// set the length of the length field
+	len = sizeof(AttrLength);
+	memcpy(field, &len, sizeof(FieldOffset));
+	// set the value of the length field
+	memcpy(data, &(attr.length), sizeof(AttrLength));
+	recordSize += sizeof(AttrLength);
+
+	return recordSize;
+}
+// translate a record into an attribute
+void VersionManager::translateRecord2Attribte(Attribute & attr, const void *record) {
+	char *data = (char *)record + sizeof(FieldOffset) * 4;
+	char *field = (char *)record +sizeof(FieldOffset);
+
+	unsigned len = *((unsigned *)field);
+	char *name = new char[len + 1];
+	memcpy(name, data, len);
+	name[len] = '\0';
+
+	attr.name.assign(name);
+	delete []name;
+
+	// get attr type
+	data += len;
+	attr.type = *((AttrType *)data);
+
+	// get attr len
+	data += sizeof(AttrLength);
+	attr.length = *((AttrLength *)data);
+}
+RC VersionManager::formatFirst2Page(const string &tableName,
+		const vector<Attribute> &attrs,
+		FileHandle &fileHandle) {
+	/*
+	 * In first page:
+	 * - current version
+	 * - version information
+	 * In second page:
+	 * - current attributes
+	 *
+	 * Note: this function must be run at the file initialization only once
+	 */
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	RC rc;
+
+	// append TABLE_PAGES_NUM more pages
+	for (int i = 0; i < TABLE_PAGES_NUM-1; ++i) {
+		rbfm->createEmptyPage(page);
+		rc = fileHandle.appendPage(page);
+		if (rc != SUCC) {
+			cerr << "formatFirst2Page: cannot append a new page" << endl;
+			return rc;
+		}
+	}
+
+	// prepare first page
+	rc = fileHandle.readPage(0, page);
+	if (rc != SUCC) {
+		cerr << "formatFirst2Page: cannot read the page" << endl;
+		return rc;
+	}
+	// set current version to zero
+	rc = setVersionNumber(page, 0);
+	if (rc != SUCC) {
+		cerr << "formatFirst2Page: cannot set version number" << endl;
+		return rc;
+	}
+	// set the free space such that users never use the page
+	rbfm->setFreeSpaceStartPoint(page, page+PAGE_SIZE);
+	// write page
+	rc = fileHandle.writePage(0, page);
+	if (rc != SUCC) {
+		cerr << "formatFirst2Page: cannto write the page" << endl;
+		return cerr;
+	}
+
+	// insert attribute data to the pages
+	resetAttributePages(attrs, fileHandle);
+
+	// set the free space such that users never use the page
+	for (int i = 1; i < TABLE_PAGES_NUM; ++i) {
+		// get the page
+		rc = fileHandle.readPage(i, page);
+		if (rc != SUCC) {
+			cerr << "formatFirst2Page: cannot read the page" << endl;
+			return cerr;
+		}
+		// set the free space such that users never use the page
+		rbfm->setFreeSpaceStartPoint(page, page+PAGE_SIZE);
+		// write page to the disk
+		rc = fileHandle.writePage(i, page);
+		if (rc != SUCC) {
+			cerr << "formatFirst2Page: cannot write the page" << endl;
+			return cerr;
+		}
+	}
+
+	return SUCC;
+}
+// set page to be empty
+RC VersionManager::setPageEmpty(void *page) {
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	// set free space to be empty
+	RC rc;
+	rbfm->setFreeSpaceStartPoint(page, page);
+	// set slot num to be zero
+	rc = rbfm->setNumSlots(page, 0);
+	if (rc != SUCC) {
+		cerr << "set page empty: " << rc << endl;
+		return rc;
+	}
+	return SUCC;
+}
+// reset the attribute pages
+RC VersionManager::resetAttributePages(const vector<Attribute> &attrs,
+		FileHandle &fileHandle) {
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	RC rc;
+	// set each page to be empty
+	for (PageNum pageNum = 1; pageNum < TABLE_PAGES_NUM; ++pageNum) {
+		rc = fileHandle.readPage(pageNum, page);
+		if (rc != SUCC) {
+			cerr << "reset attribute pages: " << rc << endl;
+			return rc;
+		}
+		setPageEmpty(page);
+		rc = fileHandle.writePage(pageNum, page);
+		if (rc != SUCC) {
+			cerr << "reset attribute pages: " << rc << endl;
+			return rc;
+		}
+	}
+	RID rid;
+	// insert data to the file
+	for (int i = 0; i < attrs.size(); ++i) {
+		translateAttribte2Record(attrs[i], record);
+		rc = rbfm->insertRecord(fileHandle, recordAttributeDescriptor, record, rid);
+		if (rc != SUCC) {
+			cerr << "reset attribute pages: " << rc << endl;
+			return rc;
+		}
+	}
+	return SUCC;
+}
+
+// create attribute descriptor for attribute
+void VersionManager::createAttrRecordDescriptor(vector<Attribute> &recordDescriptor) {
+	Attribute attr;
+	attr.name = "AttrName";
+	attr.type = TypeVarChar;
+	attr.length = (AttrLength)8;
+	recordDescriptor.push_back(attr);
+
+	attr.name = "AttrType";
+	attr.type = TypeInt;
+	attr.length = (AttrLength)4;
+	recordDescriptor.push_back(attr);
+
+	attr.name = "AttrLength";
+	attr.type = TypeInt;
+	attr.length = (AttrLength)4;
+	recordDescriptor.push_back(attr);
 }

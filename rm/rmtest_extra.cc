@@ -174,12 +174,15 @@ void testRBFM_1() {
     cout << rid[1].slotNum << "\t" << rid[3].slotNum << "\t" << rid[4].slotNum << endl;
     cout << "Now update the 2nd, 4th and 5th data" << endl;
 
+    cout << "2nd" << endl;
     prepareRecord(10, "TomTomTomT", 25, 171.1, 6000, record, &recordSize);
     rc = rbfm->updateRecord(fileHandle, recordDescriptor, record, rid[1]);
     assert(rc == success);
+    cout << "4th" << endl;
     prepareRecord(10, "Albertsons", 28, 181.1, 8000, record, &recordSize);
     rc = rbfm->updateRecord(fileHandle, recordDescriptor, record, rid[3]);
     assert(rc == success);
+    cout << "5th" << endl;
     prepareRecord(13, "JimAlbertsons", 28, 155.1, 10000, record, &recordSize);
     rc = rbfm->updateRecord(fileHandle, recordDescriptor, record, rid[4]);
     assert(rc == success);
@@ -190,10 +193,13 @@ void testRBFM_1() {
     cout << rid[1].slotNum << "\t" << rid[3].slotNum << "\t" << rid[4].slotNum << endl;
     cout << "Print the updated data" << endl;
     rc = rbfm->readRecord(fileHandle, recordDescriptor, rid[1], returnedData);
+    assert(rc == SUCC);
     rc = rbfm->printRecord(recordDescriptor, returnedData);
     rc = rbfm->readRecord(fileHandle, recordDescriptor, rid[3], returnedData);
+    assert(rc == SUCC);
     rc = rbfm->printRecord(recordDescriptor, returnedData);
     rc = rbfm->readRecord(fileHandle, recordDescriptor, rid[4], returnedData);
+    assert(rc == SUCC);
     rc = rbfm->printRecord(recordDescriptor, returnedData);
 
     /*
