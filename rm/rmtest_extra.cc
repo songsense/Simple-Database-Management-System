@@ -170,8 +170,10 @@ void testRBFM_1() {
      * Now update the 2nd, 4th and 5th data
      */
     cout << "Print the RID of 2nd, 4th and 5th data" << endl;
-    cout << rid[1].pageNum << "\t" << rid[3].pageNum << "\t" << rid[4].pageNum << endl;
-    cout << rid[1].slotNum << "\t" << rid[3].slotNum << "\t" << rid[4].slotNum << endl;
+    cout << rid[0].pageNum << "\t" << rid[1].pageNum << "\t"
+    		<< rid[3].pageNum << "\t" << rid[4].pageNum << endl;
+    cout << rid[0].slotNum << "\t" << rid[1].slotNum << "\t"
+    		<< rid[3].slotNum << "\t" << rid[4].slotNum << endl;
     cout << "Now update the 2nd, 4th and 5th data" << endl;
 
     cout << "2nd" << endl;
@@ -189,9 +191,14 @@ void testRBFM_1() {
 
     // print the updated data
     cout << "After update, print the RID of 2nd, 4th and 5th data" << endl;
-    cout << rid[1].pageNum << "\t" << rid[3].pageNum << "\t" << rid[4].pageNum << endl;
-    cout << rid[1].slotNum << "\t" << rid[3].slotNum << "\t" << rid[4].slotNum << endl;
+    cout << rid[0].pageNum << "\t" << rid[1].pageNum << "\t"
+    		<< rid[3].pageNum << "\t" << rid[4].pageNum << endl;
+    cout << rid[0].slotNum << "\t" << rid[1].slotNum << "\t"
+    		<< rid[3].slotNum << "\t" << rid[4].slotNum << endl;
     cout << "Print the updated data" << endl;
+    rc = rbfm->readRecord(fileHandle, recordDescriptor, rid[0], returnedData);
+    assert(rc == SUCC);
+    rc = rbfm->printRecord(recordDescriptor, returnedData);
     rc = rbfm->readRecord(fileHandle, recordDescriptor, rid[1], returnedData);
     assert(rc == SUCC);
     rc = rbfm->printRecord(recordDescriptor, returnedData);
@@ -201,6 +208,38 @@ void testRBFM_1() {
     rc = rbfm->readRecord(fileHandle, recordDescriptor, rid[4], returnedData);
     assert(rc == SUCC);
     rc = rbfm->printRecord(recordDescriptor, returnedData);
+
+    /*
+     * 		Test read attribute of several entry
+     */
+    cout << "begin read attribute of entries" << endl;
+    char empName[100];
+    int age, salary;
+    float height;
+    string attName[4];
+    attName[0] = "EmpName", attName[1] = "Age", attName[2] = "Height", attName[3] = "Salary";
+    for (int i = 0; i < 5; ++i) {
+    	cout << "read record's EmpName, Age, Height and Salary" << endl;
+    	rc = rbfm->readAttribute(fileHandle, recordDescriptor, rid[i], attName[0], returnedData);
+    	assert(rc == SUCC || rc == RC_RECORD_DELETED);
+    	if (rc == RC_RECORD_DELETED)
+    		cout << rc << endl;
+    	memcpy(empName, returnedData, 10);
+    	empName[10] = '\0';
+    	rc = rbfm->readAttribute(fileHandle, recordDescriptor, rid[i], attName[1], returnedData);
+    	assert(rc == SUCC || rc == RC_RECORD_DELETED);
+    	memcpy(&age, returnedData, sizeof(int));
+    	rc = rbfm->readAttribute(fileHandle, recordDescriptor, rid[i], attName[2], returnedData);
+    	assert(rc == SUCC || rc == RC_RECORD_DELETED);
+    	memcpy(&height, returnedData, sizeof(float));
+    	rc = rbfm->readAttribute(fileHandle, recordDescriptor, rid[i], attName[3], returnedData);
+    	assert(rc == SUCC || rc == RC_RECORD_DELETED);
+    	memcpy(&salary, returnedData, sizeof(int));
+    	cout << "EmpName:\t" << empName << "\tAge:\t" << age << "\theight:\t" << height <<
+    			"\tsalary:\t" << salary << endl;
+    }
+
+
 
     /*
      * test delete a updated record
@@ -218,12 +257,12 @@ void testRBFM_1() {
     // test reorganize data
     cout << "test reorganized page" << endl;
     char page[PAGE_SIZE];
-    rc = fileHandle.readPage(rid[0].pageNum, page);
+    rc = fileHandle.readPage(rid[3].pageNum, page);
     unsigned freeSpace = rbfm->getFreeSpaceSize(page);
     cout << "Before reorganizing, the free space size is " << freeSpace << endl;
-    rc = rbfm->reorganizePage(fileHandle, recordDescriptor, rid[0].pageNum);
+    rc = rbfm->reorganizePage(fileHandle, recordDescriptor, rid[3].pageNum);
     assert(rc == success);
-    rc = fileHandle.readPage(rid[0].pageNum, page);
+    rc = fileHandle.readPage(rid[3].pageNum, page);
     freeSpace = rbfm->getFreeSpaceSize(page);
     cout << "After reorganizing, the free space size is " << freeSpace << endl;
 
@@ -240,7 +279,109 @@ void testRBFM_1() {
     free(returnedData);
     cout << "RBFM Test Case 1 Passed!" << endl << endl;
 }
+/*
+ * 		Test Version Control
+ */
+void testRBFM_2() {
+	RC rc;
+	string tableName = "test.db";
+	remove(tableName.c_str());
 
+	// create database
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	VersionManager *vm = VersionManager::instance();
+
+	FileHandle fileHandle;
+	rc = rbfm->createFile(tableName);
+	assert(rc == success);
+
+	// open database
+	rc = rbfm->openFile(tableName, fileHandle);
+	assert(rc == success);
+
+	// prepare attributes
+	vector<Attribute> attrs;
+	Attribute attr;
+	attr.length = 40;
+	attr.name = "EmpName";
+	attr.type = TypeVarChar;
+	attrs.push_back(attr);
+
+    cout << "VM Test Case 1 Begins!" << endl << endl;
+
+	// initialize version manager
+    cout << "initialize version" << endl;
+	rc = vm->formatFirst2Page(tableName, attrs, fileHandle);
+	assert(rc == success);
+
+	// read versions
+	cout << "read version" << endl;
+	rc = vm->initTableVersionInfo(tableName, fileHandle);
+	assert(rc == success);
+
+	// print versions
+	vm->printAttributes(tableName);
+
+	// add one verion with adding one more attribute
+	attr.length = 4;
+	attr.name = "Age";
+	attr.type = TypeInt;
+	cout << "add one more attribute" << endl;
+	rc = vm->addAttribute(tableName, attr, fileHandle);
+	assert(rc == success);
+	// print version
+	vm->printAttributes(tableName);
+
+	// add one version with deleting one attribute
+	string attrName = "EmpName";
+	cout << "delete one attribute " << attrName << endl;
+	rc = vm->dropAttribute(tableName, attrName, fileHandle);
+	assert(rc == success);
+	// print version
+	vm->printAttributes(tableName);
+
+	// add one verion with adding one more attribute
+	attr.length = 4;
+	attr.name = "Sex";
+	attr.type = TypeInt;
+	cout << "add one more attribute" << endl;
+	rc = vm->addAttribute(tableName, attr, fileHandle);
+	assert(rc == success);
+	// print version
+	vm->printAttributes(tableName);
+
+	// add one version with deleting one attribute
+	attrName = "Age";
+	cout << "delete one attribute " << attrName << endl;
+	rc = vm->dropAttribute(tableName, attrName, fileHandle);
+	assert(rc == success);
+	// print version
+	vm->printAttributes(tableName);
+
+	// close database
+    rc = rbfm->closeFile(fileHandle);
+    assert(rc == success);
+
+	// reopen database
+    cout << "reopen the database" << endl;
+	rc = rbfm->openFile(tableName, fileHandle);
+	assert(rc == success);
+	// read versions
+	cout << "read version" << endl;
+	rc = vm->initTableVersionInfo(tableName, fileHandle);
+	assert(rc == success);
+	// print version
+	vm->printAttributes(tableName);
+
+	// close database
+    rc = rbfm->closeFile(fileHandle);
+    assert(rc == success);
+	// destroy database
+    rc = rbfm->destroyFile(tableName);
+    assert(rc == success);
+
+    cout << "VM Test Case 1 Passed!" << endl << endl;
+}
 int main() 
 {
   cout << "test..." << endl;
@@ -248,7 +389,9 @@ int main()
   rmTest();
   // other tests go here
   // test the newly added rbfm features
+  testRBFM_2();
   testRBFM_1();
+
 
   cout << "OK" << endl;
 }

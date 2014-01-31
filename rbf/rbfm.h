@@ -104,6 +104,7 @@ struct VersionInfoFrame {
 	unsigned attrLength;
 	AttrType attrType;
 	char verChangeAction;
+	char AttrColumn;
 };
 // define attribute change actions
 const int ADD_ATTRIBUTE = 1;
@@ -224,6 +225,8 @@ public:
   unsigned getEmptySpaceSize();
   // get/set the number of slots
   SlotNum getNumSlots(void *page);
+  // get next available num slots
+  SlotNum getNextAvailableSlot(void *page);
   RC setNumSlots(void *page, SlotNum num);
   // get directory of nth slot
   // Note that the id of slot starts from 0

@@ -295,7 +295,7 @@ FileSpaceManager::FileSpaceManager(FileHandle &fileHandle) {
 	//get the total number of pages 
 	unsigned totalNumPage = fileHandle.getNumberOfPages();
 	//check every page
-	for (unsigned i = 0; i < totalNumPage; ++i) {
+	for (unsigned i = TABLE_PAGES_NUM; i < totalNumPage; ++i) {
 		char page[PAGE_SIZE];
 		fileHandle.readPage(i, page);
 		//get free space for that page
@@ -323,6 +323,8 @@ RC FileSpaceManager::getPageSpaceInfo(const unsigned &recordSize,
 		return FILE_SPACE_NO_SPACE;
 	}
 	pageNum = pageSpaceInfo.pageNum;
+	if (pageNum < TABLE_PAGES_NUM)
+		return FILE_SPACE_NO_SPACE;
 	return SUCC;
 }
 // Pop the page space info
@@ -335,6 +337,8 @@ RC FileSpaceManager::popPageSpaceInfo() {
 // Push the page space info
 RC FileSpaceManager::pushPageSpaceInfo(const unsigned &freeSpaceSize,
 		const unsigned &pageNum) {
+	if (pageNum < TABLE_PAGES_NUM) // return because it's not a user page
+		return SUCC;
 	PageSpaceInfo sp(freeSpaceSize, pageNum);
 	pageQueue.push(sp);
 	return SUCC;
