@@ -33,7 +33,6 @@ typedef struct
 typedef struct {
 	FieldAddress recordOffset;
 	unsigned recordLength;
-	char version;
 } SlotDir;
 
 // define delete/update mode
@@ -98,19 +97,26 @@ public:
 /*
  * 		Middleware Version Manager
  */
+#define MAX_ATTR_LEN 64
 // version information
 struct VersionInfoFrame {
+	char name[MAX_ATTR_LEN];
 	unsigned attrLength;
-	unsigned short attrColumn;
-	char attrType;
+	AttrType attrType;
 	char verChangeAction;
 };
+// define attribute change actions
+const int ADD_ATTRIBUTE = 1;
+const int DROP_ATTRIBUTE = 2;
+const int NO_ACTION_ATTRIBUTE = 0;
+
 // define maximum version
-#define MAX_VER 100
+#define MAX_VER 50
 // define error code
 #define VERSION_TABLE_NOT_FOUND 50
 #define VERSION_OVERFLOW 51
 #define ATTR_OVERFLOW 52
+#define ATTR_NOT_FOUND 53
 
 // define char as version
 typedef unsigned char VersionNumber;
@@ -119,6 +125,7 @@ typedef vector<Attribute> RecordDescriptor;
 // define member types
 typedef unordered_map<string, vector<RecordDescriptor> > AttrMap;
 typedef unordered_map<string, VersionNumber> VersionMap;
+
 // define the class
 class VersionManager {
 private:
@@ -127,8 +134,9 @@ private:
 	static VersionManager *_ver_manager;
 public:
 	VersionManager();
-	// set up a table's attributes and its version
-	RC insertTableVersionInfo(const string &tableName, FileHandle &fileHandle);
+	// open up a Table
+	RC initTableVersionInfo(const string &tableName, FileHandle &fileHandle);
+
 	// get the attributes of a version
 	RC getAttributes(const string &tableName, vector<Attribute> &attrs,
 			const VersionNumber ver);
@@ -139,34 +147,34 @@ public:
 
 	void eraseTableVersionInfo(const string &tableName);
 	void eraseAllInfo();
-	static VersionManager* instance();
 
-	RC get_ithVersionInfo(void *page, VersionNumber ver,
-			VersionInfoFrame &versionInfoFrame);
-	RC set_ithVersionInfo(void *page, VersionNumber ver,
-			const VersionInfoFrame &versionInfoFrame);
-	// tools
 	RC formatFirst2Page(const string &tableName,
 			const vector<Attribute> &attrs,
 			FileHandle &fileHandle);
-	// set page to be empty
-	RC setPageEmpty(void *page);
+
+	void printAttributes(const string &tableName);
+	static VersionManager* instance();
+private:
+	// tools
 	// reset the attribute pages
 	RC resetAttributePages(const vector<Attribute> &attrs, FileHandle &fileHandle);
-
+	// get i'th version information
+	void get_ithVersionInfo(void *page, VersionNumber ver,
+			VersionInfoFrame &versionInfoFrame);
+	// set i'th version Information
+	void set_ithVersionInfo(void *page, VersionNumber ver,
+			const VersionInfoFrame &versionInfoFrame);
+	// get/set number of attributes
+	unsigned getNumberAttributes(void *page);
+	void setNumberAttributes(void *page, const unsigned numAttrs);
 	// get/set the version of the number
-	RC setVersionNumber(void *page, VersionNumber ver);
-	RC getVersion(const string &tableName, VersionNumber &ver);
-	// translate an attribute into a record
-	unsigned translateAttribte2Record(const Attribute & attr, void *record);
-	// translate a record into an attribute
-	void translateRecord2Attribte(Attribute & attr, const void *record);
+	RC setVersionNumber(const string &tableName, void *page, const VersionNumber &ver);
+	void getVersionNumber(const string &tableName, void *page, VersionNumber &ver);
 	// create attribute descriptor for attribute
 	vector<Attribute> recordAttributeDescriptor;
-	void createAttrRecordDescriptor(vector<Attribute> &recordDescriptor);
 private:
 	char page[PAGE_SIZE];
-	char record[PAGE_SIZE];
+	void createAttrRecordDescriptor(vector<Attribute> &recordDescriptor);
 };
 
 /*
@@ -192,27 +200,19 @@ public:
   //     For varchar: use 4 bytes to store the length of characters, then store the actual characters.
   //  !!!The same format is used for updateRecord(), the returned data of readRecord(), and readAttribute()
   RC insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid);
-  RC insertRecordWithVersion(FileHandle &fileHandle,
-		  const vector<Attribute> &recordDescriptor,
-		  const void *data, RID &rid, const char &ver);
+
 
   RC readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
-  RC readRecordWithVersion(FileHandle &fileHandle,
-		  const vector<Attribute> &recordDescriptor,
-		  const RID &rid, void *data, char &ver);
   
   // This method will be mainly used for debugging/testing
   RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
 
-  // Translate record to printable version
-  void translateRecord2Printable(const void *rawData, void *formattedData, const vector<Attribute> &recordDescriptor);
-  // Translate printable version to raw version
   // Note: record size is the size of the record
   // in the page exclude the rid size
-  unsigned translateRecord2Raw(void *rawData, const void *formattedData, const vector<Attribute> &recordDescriptor);
+  unsigned getRecordSize(const void *formattedData, const vector<Attribute> &recordDescriptor);
 
   // create an empty page
-  void createEmptyPage(void *page);
+  void setPageEmpty(void *page);
   // get the size of a record & it's directory
   unsigned getRecordDirectorySize(const vector<Attribute> &recordDescriptor,
 		  unsigned &recordSize);
@@ -220,7 +220,7 @@ public:
   void * getFreeSpaceStartPoint(void *page);
   void setFreeSpaceStartPoint(void *page, void * startPoint);
   // calculate the size of free space
-  unsigned getFreeSpaceSize(void *page);
+  int getFreeSpaceSize(void *page);
   unsigned getEmptySpaceSize();
   // get/set the number of slots
   SlotNum getNumSlots(void *page);
@@ -247,9 +247,6 @@ public:
 
   // Assume the rid does not change after update
   RC updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid);
-  RC updateRecordWithVersion(FileHandle &fileHandle,
-		  const vector<Attribute> &recordDescriptor,
-		  const void *data, const RID &rid, const char &ver);
 
   RC readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string attributeName, void *data);
 
@@ -278,7 +275,6 @@ protected:
 private:
   static RecordBasedFileManager *_rbf_manager;
   char pageContent[PAGE_SIZE];
-  char recordConent[PAGE_SIZE];
 };
 
 #endif

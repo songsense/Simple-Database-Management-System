@@ -10,9 +10,7 @@
 
 using namespace std;
 
-// define attribute change actions
-#define ADD_ATTRIBUTE 0
-#define DROP_ATTRIBUTE 1
+
 
 typedef unsigned AttrNumber;
 
@@ -97,7 +95,6 @@ private:
 
   // TODO must have a cache for the first TABLE_PAGES_NUM
   char page[PAGE_SIZE];
-  char record[PAGE_SIZE];
 };
 
 #endif

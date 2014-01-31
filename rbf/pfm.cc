@@ -295,7 +295,7 @@ FileSpaceManager::FileSpaceManager(FileHandle &fileHandle) {
 	//get the total number of pages 
 	unsigned totalNumPage = fileHandle.getNumberOfPages();
 	//check every page
-	for (unsigned i = TABLE_PAGES_NUM; i < totalNumPage; ++i) {
+	for (unsigned i = 0; i < totalNumPage; ++i) {
 		char page[PAGE_SIZE];
 		fileHandle.readPage(i, page);
 		//get free space for that page
@@ -311,7 +311,8 @@ FileSpaceManager::FileSpaceManager() {
 }
 
 // Get the page with the greatest free space size
-RC FileSpaceManager::getPageSpaceInfo(const unsigned &recordSize, PageNum &pageNum) {
+RC FileSpaceManager::getPageSpaceInfo(const unsigned &recordSize,
+		PageNum &pageNum) {
 	if (pageQueue.empty())
 		return FILE_SPACE_EMPTY;
 	
@@ -332,7 +333,8 @@ RC FileSpaceManager::popPageSpaceInfo() {
 	return SUCC;
 }
 // Push the page space info
-RC FileSpaceManager::pushPageSpaceInfo(const unsigned &freeSpaceSize, const unsigned &pageNum) {
+RC FileSpaceManager::pushPageSpaceInfo(const unsigned &freeSpaceSize,
+		const unsigned &pageNum) {
 	PageSpaceInfo sp(freeSpaceSize, pageNum);
 	pageQueue.push(sp);
 	return SUCC;

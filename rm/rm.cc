@@ -20,7 +20,6 @@ RelationManager* RelationManager::instance()
 
 RelationManager::RelationManager()
 {
-	// prepare the data of attributes
 }
 
 RelationManager::~RelationManager()
@@ -74,50 +73,7 @@ RC RelationManager::deleteTable(const string &tableName)
 // TODO NOTE: this method must be invoked when adding/dropping attributes
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-	VersionManager *verManager = VersionManager::instance();
-	RC rc;
-
-	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
-	if (rc != SUCC)
-		return rc;
-
-	RID rid;
-	unsigned totalSlotNum = -1;
-	for (int i = 1; i < TABLE_PAGES_NUM; ++i) { // for all pages that stores attributes
-		rid.pageNum = i;
-
-		// read the specific page
-		rc = fileHandle.readPage(rid.pageNum, page);
-		if (rc != SUCC)
-			return rc;
-		// read the total number of slots
-		totalSlotNum = rbfm->getNumSlots(page);
-
-		// for all slot numbers in the page
-		// read them and translate them into attributes
-		for (int j = 0; j < totalSlotNum; ++j) {
-			rid.slotNum = j;
-			rc = rbfm->readRecord(fileHandle, verManager->recordAttributeDescriptor, rid, record);
-			if (rc != SUCC)
-				return rc;
-			Attribute attr;
-			verManager->translateRecord2Attribte(attr, record);
-			attrs.push_back(attr);
-		}
-	}
-
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC)
-		return rc;
-
-	// TODO save the retrieved record descriptor
-	// currentRecordDescriptor = attrs;
-
-    return SUCC;
+	return -1;
 }
 
 RC RelationManager::openTable(const string &tableName, FileHandle &fileHandle) {

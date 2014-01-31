@@ -40,18 +40,11 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
     return PagedFileManager::instance()->closeFile(fileHandle);
 }
 // Given a record descriptor, insert a record into a given file identifed by the provided handle.
-// Given a record descriptor, insert a record into a given file identifed by the provided handle.
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const void *data, RID &rid) {
-	// TODO test
-	return insertRecordWithVersion(fileHandle, recordDescriptor, data, rid, 0);
-}
-RC RecordBasedFileManager::insertRecordWithVersion(FileHandle &fileHandle,
-		const vector<Attribute> &recordDescriptor,
-		const void *data, RID &rid, const char &ver) {
 	// get record size to be inserted
 	// translate the data to the raw data version
-	unsigned recordSize = translateRecord2Raw(recordConent, data, recordDescriptor);
+	unsigned recordSize = getRecordSize(data, recordDescriptor);
 	// to determine whether a record can be inserted, must include the slot directory size
 	unsigned recordDirectorySize = recordSize + sizeof(SlotDir);
 
@@ -68,7 +61,7 @@ RC RecordBasedFileManager::insertRecordWithVersion(FileHandle &fileHandle,
 	if (rc == FILE_SPACE_EMPTY || rc == FILE_SPACE_NO_SPACE) {
 		// the record is too big to fit into the page
 		// create a new page
-		createEmptyPage(pageContent);
+		setPageEmpty(pageContent);
 		rc = fileHandle.appendPage(pageContent);
 		if (rc != SUCC) {
 			cerr << "Insert record: cannot append a new page" << endl;
@@ -95,7 +88,7 @@ RC RecordBasedFileManager::insertRecordWithVersion(FileHandle &fileHandle,
 	char *originalStartPoint = startPoint;
 
 	//  write data onto the page memory
-	memcpy(startPoint, recordConent, recordSize);
+	memcpy(startPoint, data, recordSize);
 
     // update the free space pointer of the page
 	startPoint += recordSize;
@@ -113,7 +106,6 @@ RC RecordBasedFileManager::insertRecordWithVersion(FileHandle &fileHandle,
 	slotDir.recordLength = recordSize;
 	slotDir.recordOffset = (FieldAddress)originalStartPoint -
 			(FieldAddress)pageContent;
-	slotDir.version = ver;
 	rc = setSlotDir(pageContent, slotDir, numSlots+1);
 	if (rc != SUCC) {
 		cerr << "Insert record: fail to update the director of the slot " << rc << endl;
@@ -139,12 +131,6 @@ RC RecordBasedFileManager::insertRecordWithVersion(FileHandle &fileHandle,
 // Given a record descriptor, read the record identified by the given rid.
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const RID &rid, void *data) {
-	char ver;
-	return readRecordWithVersion(fileHandle, recordDescriptor, rid, data, ver);
-}
-RC RecordBasedFileManager::readRecordWithVersion(FileHandle &fileHandle,
-		const vector<Attribute> &recordDescriptor,
-		const RID &rid, void *data, char &ver) {
 	RC rc = fileHandle.readPage(rid.pageNum, pageContent);
 	if (rc != SUCC) {
 		cerr << "Read Record: Reading Page error: " << rc << endl;
@@ -170,15 +156,15 @@ RC RecordBasedFileManager::readRecordWithVersion(FileHandle &fileHandle,
 		RID forwardRID;
 		getForwardRID(forwardRID, slotDir.recordOffset);
 		// goto forwarded RID to read the data
-		return readRecordWithVersion(fileHandle, recordDescriptor,
-				forwardRID, data, ver);
+		return readRecord(fileHandle, recordDescriptor,
+				forwardRID, data);
 	}
 
 	// get the slot directory info
 	char *slot = (char *)pageContent + slotDir.recordOffset;
-	ver = slotDir.version;
 	// translate the slot record to printable data
-	translateRecord2Printable((void *)slot, data, recordDescriptor);
+	memcpy(data, slot, slotDir.recordLength);
+
     return SUCC;
 }
 // delete all records
@@ -301,15 +287,6 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle,
 RC RecordBasedFileManager::RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor,
 		const void *data, const RID &rid) {
-	// TODO Test
-//	cerr << "never invoke this method" << endl;
-//	exit(-1);
-	RC rc = updateRecordWithVersion(fileHandle, recordDescriptor, data, rid, 0);
-	return rc;
-}
-RC RecordBasedFileManager::updateRecordWithVersion(FileHandle &fileHandle,
-		  const vector<Attribute> &recordDescriptor,
-		  const void *data, const RID &rid, const char &ver) {
 	RC rc;
 	// char page[PAGE_SIZE];
 	// read page
@@ -336,13 +313,13 @@ RC RecordBasedFileManager::updateRecordWithVersion(FileHandle &fileHandle,
 		// get the forwarded RID
 		RID newRID;
 		getForwardRID(newRID, curSlot.recordOffset);
-		return updateRecordWithVersion(fileHandle,
-				recordDescriptor, data, newRID, ver);
+		return updateRecord(fileHandle,
+				recordDescriptor, data, newRID);
 	}
 
 	// get record size to be inserted
 	// translate the record to formatted version
-	unsigned recordSize = translateRecord2Raw(recordConent, data, recordDescriptor);
+	unsigned recordSize = getRecordSize(data, recordDescriptor);
 	// determine if the record can be fitted into the original slot
 	unsigned recordSpaceAvailable = 0;
 
@@ -397,10 +374,9 @@ RC RecordBasedFileManager::updateRecordWithVersion(FileHandle &fileHandle,
 	if (recordSpaceAvailable >= recordSize) {
 		char *writtenRecord = (char *)pageContent + curSlot.recordOffset;
 		// copy the record
-		memcpy(writtenRecord, recordConent, recordSize);
+		memcpy(writtenRecord, data, recordSize);
 		// reset the slot directory
 		curSlot.recordLength = recordSize;
-		curSlot.version = ver;
 		rc = setSlotDir(pageContent, curSlot, rid.slotNum);
 		if (rc != SUCC){
 			cerr << "Update record: set dir error " << rc << endl;
@@ -419,7 +395,7 @@ RC RecordBasedFileManager::updateRecordWithVersion(FileHandle &fileHandle,
 	} else { // the updated record cannot be fitted into the page
 		// insert the record
 		RID newRID;
-		rc = insertRecordWithVersion(fileHandle, recordDescriptor, data, newRID, ver);
+		rc = insertRecord(fileHandle, recordDescriptor, data, newRID);
 		if (rc != SUCC){
 			cerr << "Update record: insert record error " << rc << endl;
 			return rc;
@@ -587,100 +563,35 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
 }
 // Translate printable version to raw version
 // Note: record size is the size of the record in the page exclude the rid size
-unsigned RecordBasedFileManager::translateRecord2Raw(void *raw,
+unsigned RecordBasedFileManager::getRecordSize(
 		const void *formatted,
 		const vector<Attribute> &rD) {
 	unsigned recordSize = 0;
-	char *rawData = (char *)raw;
-	char *rawField = (char *)raw;
 	char *formattedData = (char *)formatted;
 
 	unsigned numFields = rD.size();
-	// Note here the start record address is an offset
-	FieldOffset startPointAddress = (FieldOffset)(sizeof(FieldOffset) +
-			numFields * sizeof(FieldOffset));
-	memcpy(rawData, &startPointAddress, sizeof(FieldOffset));
-	recordSize += sizeof(FieldOffset) + numFields * sizeof(FieldOffset);
-	rawData += recordSize;
-	rawField += sizeof(FieldOffset);
 
-	FieldOffset offset = 0;
 	for (int i = 0; i < numFields; ++i) {
 		switch(rD[i].type) {
 		case TypeInt:
-			offset += sizeof(int);
-			memcpy(rawField, &offset, sizeof(FieldOffset));
-			rawField += sizeof(FieldOffset);
-			memcpy(rawData, formattedData, sizeof(int));
-			rawData += sizeof(int);
-			formattedData += sizeof(int);
 			recordSize += sizeof(int);
+			formattedData += sizeof(int);
 			break;
 		case TypeReal:
-			offset += sizeof(float);
-			memcpy(rawField, &offset, sizeof(FieldOffset));
-			rawField += sizeof(FieldOffset);
-			memcpy(rawData, formattedData, sizeof(float));
-			rawData += sizeof(float);
-			formattedData += sizeof(float);
-			recordSize += sizeof(float);
+			recordSize += sizeof(int);
+			formattedData += sizeof(int);
 			break;
 		case TypeVarChar:
 			int len = *((int *)(formattedData));
-			offset += len;
-			memcpy(rawField, &offset, sizeof(FieldOffset));
-			rawField += sizeof(FieldOffset);
-			formattedData += sizeof(int);				// because of test file
-			memcpy(rawData, formattedData, len);
-			rawData += len;
-			formattedData += len;
-			recordSize += len;
+			recordSize += sizeof(int) + len;
+			formattedData += sizeof(int) + len;
 			break;
 		}
 	}
 	return recordSize;
 }
-// Translate record to printable version
-void RecordBasedFileManager::translateRecord2Printable(const void *raw,
-		void *formatted,
-		const vector<Attribute> &rD) {
-	char *rawData = (char *)raw;
-	char *formattedData = (char *)formatted;
-	rawData += sizeof(FieldOffset);
-	FieldOffset *fieldSizes = new FieldOffset[rD.size()];
-	FieldOffset lastOffset = 0;
-	for (int i = 0; i < rD.size(); ++i) {
-		fieldSizes[i] = *((FieldOffset *)rawData) - lastOffset;
-		lastOffset = *((FieldOffset *)rawData);
-		rawData += sizeof(FieldOffset);
-	}
-	for (int i = 0; i < rD.size(); ++i) {
-		switch(rD[i].type) {
-		case TypeInt:
-			memcpy(formattedData, rawData, sizeof(int));
-			rawData += sizeof(int);
-			formattedData += sizeof(int);
-			break;
-		case TypeReal:
-			memcpy(formattedData, rawData, sizeof(float));
-			rawData += sizeof(float);
-			formattedData += sizeof(float);
-			break;
-		case TypeVarChar:
-			int size = (int)(fieldSizes[i]);  // because of test file prepareRecord
-			memcpy(formattedData, &size, sizeof(int));
-			formattedData += sizeof(int);
-			memcpy(formattedData, rawData, size);
-			formattedData += size;
-			rawData += size;
-			break;
-		}
-	}
-	delete []fieldSizes;
-
-}
 // Create an empty page
-void RecordBasedFileManager::createEmptyPage(void *page) {
+void RecordBasedFileManager::setPageEmpty(void *page) {
 	// set the page to be zeros
 	memset(page, 0, PAGE_SIZE);
 	// set the free space point to the start of the page
@@ -712,10 +623,10 @@ void RecordBasedFileManager::setFreeSpaceStartPoint(void *page, void *startPoint
 }
 // calculate the size of free space
 // Note this free space does NOT include the SLOT DIRECTORY
-unsigned RecordBasedFileManager::getFreeSpaceSize(void *page) {
+int RecordBasedFileManager::getFreeSpaceSize(void *page) {
 	char *beg = (char *)page + PAGE_SIZE - sizeof(FieldAddress);
 	FieldAddress addr_beg = *((FieldAddress *)(beg));
-	unsigned space = PAGE_SIZE - addr_beg;
+	int space = PAGE_SIZE - addr_beg;
 	space = space - getNumSlots(page) * sizeof(SlotDir) - sizeof(SlotNum) - sizeof(FieldAddress);
 	return space;
 }
@@ -776,6 +687,7 @@ void RecordBasedFileManager::setForwardRID(const RID &rid, FieldAddress &offset)
 /*
  *		Middleware: Version Manager
  */
+//TODO
 VersionManager::VersionManager() {
 	createAttrRecordDescriptor(recordAttributeDescriptor);
 }
@@ -785,13 +697,79 @@ VersionManager* VersionManager::instance() {
 
     return _ver_manager;
 }
-// set up a table's attributes and its version
-RC VersionManager::insertTableVersionInfo(const string &tableName,
+
+// open up a Table
+RC VersionManager::initTableVersionInfo(const string &tableName,
 		FileHandle &fileHandle) {
-	//TODO
-	return -1;
+	RC rc;
+	vector<Attribute> attrs;
+	VersionInfoFrame verInfoFrame;
+	Attribute attr;
+	// load attribute pages
+	for (int pageNum = 1; pageNum < TABLE_PAGES_NUM; ++pageNum) {
+		// read the specific page
+		rc = fileHandle.readPage(pageNum, page);
+		if (rc != SUCC) {
+			cerr << "initTableVersionInfo: error to read page " << rc << endl;
+			return rc;
+		}
+		// get number of attributes
+		unsigned numAttrs = getNumberAttributes(page);
+		// for all attribute saved in the page
+		// read them and translate them into attributes
+		for (unsigned i = 0; i < numAttrs; ++i) {
+			get_ithVersionInfo(page, i, verInfoFrame);
+			attr.length = verInfoFrame.attrLength;
+			attr.name.assign(verInfoFrame.name);
+			attr.type = verInfoFrame.attrType;
+			attrs.push_back(attr);
+		}
+	}
+
+	// read the first page
+	// load the first page with versions
+	rc = fileHandle.readPage(0, page);
+	if (rc != SUCC) {
+		cerr << "insertTableVersionInfo: read page" << rc << endl;
+		return rc;
+	}
+	// get the version number
+	VersionNumber verNum;
+	getVersionNumber(tableName, page, verNum);
+	// insert the version number to the version map
+	versionMap[tableName] = verNum;
+
+	// retrieve the history of the attributes
+	RecordDescriptor recordDescriptor;
+	vector<RecordDescriptor> recordDescriptorArray(verNum, recordDescriptor);
+
+	recordDescriptorArray[verNum] = attrs;
+	// now iteratively get the history of attributes
+	// move to the att info area
+	char *data = (char *)page + sizeof(VersionNumber);
+	for (int i = verNum-1; i >= 0; --i) {
+		// read in the data
+		get_ithVersionInfo(data, i, verInfoFrame);
+		if (verInfoFrame.verChangeAction == ADD_ATTRIBUTE) {
+			// this means one attribute must be deleted to fit older attribute
+			RecordDescriptor::iterator itr = attrs.begin();
+			for (; itr != attrs.end(); ++itr) {
+				if (itr->name == attr.name) { // hit
+					attrs.erase(itr);
+					break;
+				}
+			}
+		} else { // this means one attribute must be add back
+			attrs.push_back(attr);
+		}
+		recordDescriptorArray[i] = attrs;
+	}
+	// insert the history attributes to the attribute map
+	attrMap[tableName] = recordDescriptorArray;
+	return SUCC;
 }
 // get the attributes of a version
+// Note that once load a table, the history attributes are cached
 RC VersionManager::getAttributes(const string &tableName, vector<Attribute> &attrs,
 		const VersionNumber ver) {
 	AttrMap::iterator itr = attrMap.find(tableName);
@@ -819,16 +797,48 @@ RC VersionManager::addAttribute(const string &tableName,
 	if (itr_1 == versionMap.end()) {
 		return VERSION_TABLE_NOT_FOUND;
 	}
+	// get version info to read and write
 	VersionNumber &currentVersion = itr_1->second;
 	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
+	vector<Attribute> &recordDescriptor = recordDescriptorArray[currentVersion];
+
+	// update the version history in page 0
+	// read page 0
+	RC rc = fileHandle.readPage(0, page);
+	if (rc != SUCC) {
+		cerr << "add attribute: read page error." << endl;
+		return rc;
+	}
+
+	// set the frame
+	VersionInfoFrame verInfoFrame;
+	verInfoFrame.attrLength = attr.length;
+	verInfoFrame.attrType = attr.type;
+	memcpy(verInfoFrame.name, attr.name.c_str(), attr.name.length());
+	verInfoFrame.verChangeAction = ADD_ATTRIBUTE;
+	// save the frame to the page
+	set_ithVersionInfo(page, currentVersion, verInfoFrame);
+	// write the page
+	rc = fileHandle.writePage(0, page);
+	if (rc != SUCC) {
+		cerr << "add attribute: write page error." << rc << endl;
+		return rc;
+	}
 
 	// update the version number
 	currentVersion = (currentVersion + 1) % MAX_VER;
 
 	// update record descriptor
-	vector<Attribute> &recordDescriptor = recordDescriptorArray[currentVersion];
-	recordDescriptor.push_back(attr);
-	//TODO write to page
+	recordDescriptorArray[currentVersion] = recordDescriptor;
+	recordDescriptorArray[currentVersion].push_back(attr);
+
+	// save the attribute changes to the page
+	rc = resetAttributePages(recordDescriptorArray[currentVersion], fileHandle);
+	if (rc != SUCC) {
+		cerr << "add attribute: resetAttributePages." << rc << endl;
+		return rc;
+	}
+
 	return SUCC;
 }
 // drop an attribute
@@ -842,23 +852,59 @@ RC VersionManager::dropAttribute(const string &tableName,
 	if (itr_1 == versionMap.end()) {
 		return VERSION_TABLE_NOT_FOUND;
 	}
+	// get version info to read and write
 	VersionNumber &currentVersion = itr_1->second;
 	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
-	vector<Attribute> recordDescriptor = recordDescriptorArray[currentVersion];
+	vector<Attribute> &recordDescriptor = recordDescriptorArray[currentVersion];
+
+	// update the version history in page 0
+	// read page 0
+	RC rc = fileHandle.readPage(0, page);
+	if (rc != SUCC) {
+		cerr << "add attribute: read page error." << endl;
+		return rc;
+	}
+	// format VersionInfo Frame
+	int deleteIndex = 0;
+	vector<Attribute>::iterator deleteItr = recordDescriptor.begin();
+	for (int deleteIndex = 0; deleteIndex < recordDescriptor.size(); ++deleteIndex) {
+		if (recordDescriptor[deleteIndex].name == attributeName)
+			break;
+		++deleteItr;
+	}
+	if (deleteIndex == recordDescriptor.size())
+		return ATTR_NOT_FOUND;
+
+	// set the frame
+	VersionInfoFrame verInfoFrame;
+	verInfoFrame.attrLength = recordDescriptor[deleteIndex].length;
+	verInfoFrame.attrType = recordDescriptor[deleteIndex].type;
+	memcpy(verInfoFrame.name, recordDescriptor[deleteIndex].name.c_str(),
+			recordDescriptor[deleteIndex].name.length());
+	verInfoFrame.verChangeAction = DROP_ATTRIBUTE;
+	// save the frame to the page
+	set_ithVersionInfo(page, currentVersion, verInfoFrame);
+	// write the page
+	rc = fileHandle.writePage(0, page);
+	if (rc != SUCC) {
+		cerr << "add attribute: write page error." << rc << endl;
+		return rc;
+	}
 
 	// update the version number
 	currentVersion = (currentVersion + 1) % MAX_VER;
 
 	// update record descriptor
-	for (vector<Attribute>::iterator itrAtt = recordDescriptor.begin();
-			itrAtt != recordDescriptor.end(); ++itrAtt) {
-		if (itrAtt->name == attributeName) {
-			recordDescriptor.erase(itrAtt);
-			break;
-		}
-	}
 	recordDescriptorArray[currentVersion] = recordDescriptor;
-	//TODO write to page
+	recordDescriptorArray[currentVersion].erase(deleteItr);
+
+	// save the attribute changes to the page
+	rc = resetAttributePages(recordDescriptorArray[currentVersion], fileHandle);
+	if (rc != SUCC) {
+		cerr << "add attribute: resetAttributePages." << rc << endl;
+		return rc;
+	}
+
 	return SUCC;
 }
 
@@ -876,114 +922,77 @@ void VersionManager::eraseAllInfo() {
 	attrMap.clear();
 	attrMap.clear();
 }
-// get i'th version information
-RC VersionManager::get_ithVersionInfo(void *page, VersionNumber ver,
-		VersionInfoFrame &versionInfoFrame) {
-	if (ver >= MAX_VER)
-		return VERSION_OVERFLOW;
-	char *data = (char *)page;
-	data += sizeof(VersionNumber) + ver * sizeof(VersionInfoFrame);
-	memcpy(&versionInfoFrame, data, sizeof(VersionInfoFrame));
-	return SUCC;
+
+void VersionManager::printAttributes(const string &tableName) {
+	AttrMap::iterator itrMap = attrMap.find(tableName);
+	if (itrMap == attrMap.end()) {
+		cout << "Table cannot be found!" << endl;
+		return;
+	}
+	VersionMap::iterator itrVer = versionMap.find(tableName);
+	if (itrVer == versionMap.end()) {
+		cout << "Table cannot be found!" << endl;
+		return;
+	}
+	vector<RecordDescriptor> &recordDescriptorArray = attrMap[tableName];
+	VersionNumber ver = versionMap[tableName];
+	cout << "=================================================" << endl;
+	cout << "Attribute Name\tAttribute Length\tAttribute Type" << endl;
+	for (int i = 0; i < recordDescriptorArray.size(); ++i) {
+		for (int j = 0; j < recordDescriptorArray[i].size(); ++j) {
+			cout << recordDescriptorArray[i][j].name << "\t" <<
+					recordDescriptorArray[i][j].length << "\t" <<
+					recordDescriptorArray[i][j].type << endl;
+		}
+		cout << "-------------------------------------------------" << endl;
+	}
+	cout << "=================================================" << endl;
+	cout << "There are " << ver << " versions" << endl;
 }
-// set i'th version Information
-RC VersionManager::set_ithVersionInfo(void *page, VersionNumber ver,
-		const VersionInfoFrame &versionInfoFrame) {
-	if (ver >= MAX_VER)
-		return VERSION_OVERFLOW;
+// tools below
+
+// get/set number of attributes
+unsigned VersionManager::getNumberAttributes(void *page) {
 	char *data = (char *)page;
-	data += sizeof(VersionNumber) + ver * sizeof(VersionInfoFrame);
-	memcpy(data, &versionInfoFrame, sizeof(VersionInfoFrame));
-	return SUCC;
+	data += (PAGE_SIZE - sizeof(unsigned));
+	return *((unsigned *)data);
+}
+void VersionManager::setNumberAttributes(void *page, const unsigned numAttrs) {
+	char *data = (char *)page;
+	data += (PAGE_SIZE - sizeof(unsigned));
+	memcpy(data, &numAttrs, sizeof(unsigned));
 }
 
 // set the version of the number
-RC VersionManager::setVersionNumber(void *page, VersionNumber ver) {
+RC VersionManager::setVersionNumber(const string &tableName, void *page,
+		const VersionNumber &ver) {
 	if (ver >= MAX_VER)
 		return VERSION_OVERFLOW;
-	memcpy(page, &ver, sizeof(VersionNumber));
-	// TODO currentVersionNumber = ver;
+	char *data = (char *)page + PAGE_SIZE - sizeof(VersionNumber);
+	memcpy(data, &ver, sizeof(VersionNumber));
 	return SUCC;
 }
 // get the version number
-RC VersionManager::getVersion(const string &tableName, VersionNumber &ver) {
-	VersionMap::iterator itr_1 = versionMap.find(tableName);
-	if (itr_1 != versionMap.end()) {
-		ver = itr_1->second;
-		return SUCC;
-	} else {
-		return VERSION_TABLE_NOT_FOUND;
-	}
+void VersionManager::getVersionNumber(const string &tableName, void *page,
+		VersionNumber &ver) {
+	char *data = (char *)page + PAGE_SIZE - sizeof(VersionNumber);
+	ver = *((VersionNumber *)data);
+}
+// get i'th version information
+void VersionManager::get_ithVersionInfo(void *page, VersionNumber ver,
+		VersionInfoFrame &versionInfoFrame) {
+	char *data = (char *)page;
+	data += ver * sizeof(VersionInfoFrame);
+	memcpy(&versionInfoFrame, data, sizeof(VersionInfoFrame));
+}
+// set i'th version Information
+void VersionManager::set_ithVersionInfo(void *page, VersionNumber ver,
+		const VersionInfoFrame &versionInfoFrame) {
+	char *data = (char *)page;
+	data += ver * sizeof(VersionInfoFrame);
+	memcpy(data, &versionInfoFrame, sizeof(VersionInfoFrame));
 }
 
-// translate an attribute into a record
-unsigned VersionManager::translateAttribte2Record(const Attribute & attr,
-		void *record) {
-	// the attribute of the data attribute is clear
-	// number of the attribute is 3
-	// the first is a varchar
-	// the rest are Int
-
-	unsigned recordSize = 0;
-
-	// set the offset to the record data
-	FieldOffset len = sizeof(FieldOffset)*4; // the first offset of the record
-	memcpy(record, &len, sizeof(FieldOffset));
-	recordSize += len;
-
-	// set the data start position
-	char *data = (char *)record + sizeof(FieldOffset) * 4;
-	// set the field start position
-	char *field = (char *)record + sizeof(FieldOffset);
-
-	// set the length of name field
-	len = attr.name.length();
-	memcpy(field, &len, sizeof(FieldOffset));
-	field += sizeof(FieldOffset);
-	// set the value of name field
-	memcpy(data, attr.name.c_str(), len);
-	data += len;
-	recordSize += len;
-
-	// set the length of the type field
-	len = sizeof(AttrType);
-	memcpy(field, &len, sizeof(FieldOffset));
-	field += sizeof(FieldOffset);
-	// set the value of the type field
-	memcpy(data, &(attr.type), sizeof(AttrType));
-	data += sizeof(AttrType);
-	recordSize += sizeof(AttrType);
-
-	// set the length of the length field
-	len = sizeof(AttrLength);
-	memcpy(field, &len, sizeof(FieldOffset));
-	// set the value of the length field
-	memcpy(data, &(attr.length), sizeof(AttrLength));
-	recordSize += sizeof(AttrLength);
-
-	return recordSize;
-}
-// translate a record into an attribute
-void VersionManager::translateRecord2Attribte(Attribute & attr, const void *record) {
-	char *data = (char *)record + sizeof(FieldOffset) * 4;
-	char *field = (char *)record +sizeof(FieldOffset);
-
-	unsigned len = *((unsigned *)field);
-	char *name = new char[len + 1];
-	memcpy(name, data, len);
-	name[len] = '\0';
-
-	attr.name.assign(name);
-	delete []name;
-
-	// get attr type
-	data += len;
-	attr.type = *((AttrType *)data);
-
-	// get attr len
-	data += sizeof(AttrLength);
-	attr.length = *((AttrLength *)data);
-}
 RC VersionManager::formatFirst2Page(const string &tableName,
 		const vector<Attribute> &attrs,
 		FileHandle &fileHandle) {
@@ -996,18 +1005,21 @@ RC VersionManager::formatFirst2Page(const string &tableName,
 	 *
 	 * Note: this function must be run at the file initialization only once
 	 */
-	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	RC rc;
 
 	// append TABLE_PAGES_NUM more pages
-	for (int i = 0; i < TABLE_PAGES_NUM-1; ++i) {
-		rbfm->createEmptyPage(page);
-		rc = fileHandle.appendPage(page);
-		if (rc != SUCC) {
-			cerr << "formatFirst2Page: cannot append a new page" << endl;
-			return rc;
+	unsigned totalNumPages = fileHandle.getNumberOfPages();
+	if (totalNumPages < TABLE_PAGES_NUM) {
+		// must new pages for table
+		for (int i = 0; i < TABLE_PAGES_NUM; ++i) {
+			rc = fileHandle.appendPage(page);
+			if (rc != SUCC) {
+				cerr << "formatFirst2Page: cannot append a new page" << endl;
+				return rc;
+			}
 		}
 	}
+
 
 	// prepare first page
 	rc = fileHandle.readPage(0, page);
@@ -1016,86 +1028,61 @@ RC VersionManager::formatFirst2Page(const string &tableName,
 		return rc;
 	}
 	// set current version to zero
-	rc = setVersionNumber(page, 0);
+	rc = setVersionNumber(tableName, page, 0);
 	if (rc != SUCC) {
 		cerr << "formatFirst2Page: cannot set version number" << endl;
 		return rc;
 	}
-	// set the free space such that users never use the page
-	rbfm->setFreeSpaceStartPoint(page, page+PAGE_SIZE);
 	// write page
 	rc = fileHandle.writePage(0, page);
 	if (rc != SUCC) {
-		cerr << "formatFirst2Page: cannto write the page" << endl;
+		cerr << "formatFirst2Page: cannto write the page" << rc << endl;
 		return cerr;
 	}
 
 	// insert attribute data to the pages
-	resetAttributePages(attrs, fileHandle);
-
-	// set the free space such that users never use the page
-	for (int i = 1; i < TABLE_PAGES_NUM; ++i) {
-		// get the page
-		rc = fileHandle.readPage(i, page);
-		if (rc != SUCC) {
-			cerr << "formatFirst2Page: cannot read the page" << endl;
-			return cerr;
-		}
-		// set the free space such that users never use the page
-		rbfm->setFreeSpaceStartPoint(page, page+PAGE_SIZE);
-		// write page to the disk
-		rc = fileHandle.writePage(i, page);
-		if (rc != SUCC) {
-			cerr << "formatFirst2Page: cannot write the page" << endl;
-			return cerr;
-		}
-	}
-
-	return SUCC;
-}
-// set page to be empty
-RC VersionManager::setPageEmpty(void *page) {
-	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-	// set free space to be empty
-	RC rc;
-	rbfm->setFreeSpaceStartPoint(page, page);
-	// set slot num to be zero
-	rc = rbfm->setNumSlots(page, 0);
+	rc = resetAttributePages(attrs, fileHandle);
 	if (rc != SUCC) {
-		cerr << "set page empty: " << rc << endl;
-		return rc;
+		cerr << "formatFirst2Page: resetAttributePages" << rc << endl;
+		return cerr;
 	}
+
 	return SUCC;
 }
+
 // reset the attribute pages
 RC VersionManager::resetAttributePages(const vector<Attribute> &attrs,
 		FileHandle &fileHandle) {
-	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	RC rc;
-	// set each page to be empty
-	for (PageNum pageNum = 1; pageNum < TABLE_PAGES_NUM; ++pageNum) {
-		rc = fileHandle.readPage(pageNum, page);
-		if (rc != SUCC) {
-			cerr << "reset attribute pages: " << rc << endl;
-			return rc;
-		}
-		setPageEmpty(page);
-		rc = fileHandle.writePage(pageNum, page);
-		if (rc != SUCC) {
-			cerr << "reset attribute pages: " << rc << endl;
-			return rc;
-		}
+	// open page
+	rc = fileHandle.readPage(1, page);
+	if (rc != SUCC) {
+		cerr << "resetAttributePages: read page error" << rc << endl;
+		return cerr;
 	}
-	RID rid;
+	// set the number of attributes
+	setNumberAttributes(page, attrs.size());
+
 	// insert data to the file
+	VersionInfoFrame verInfoFrame;
 	for (int i = 0; i < attrs.size(); ++i) {
-		translateAttribte2Record(attrs[i], record);
-		rc = rbfm->insertRecord(fileHandle, recordAttributeDescriptor, record, rid);
-		if (rc != SUCC) {
-			cerr << "reset attribute pages: " << rc << endl;
-			return rc;
-		}
+		// set the info frame
+		verInfoFrame.attrLength = attrs[i].length;
+		verInfoFrame.attrType = attrs[i].type;
+		memcpy(verInfoFrame.name, attrs[i].name.c_str(), attrs[i].name.length());
+		verInfoFrame.verChangeAction = NO_ACTION_ATTRIBUTE;
+
+		// save the info frame to page
+		set_ithVersionInfo(page, i, verInfoFrame);
 	}
+
+	// save to the disk
+	rc = fileHandle.writePage(1, page);
+	if (rc != SUCC) {
+		cerr << "resetAttributePages: write page error" << rc << endl;
+		return cerr;
+	}
+
 	return SUCC;
 }
 
@@ -1113,6 +1100,11 @@ void VersionManager::createAttrRecordDescriptor(vector<Attribute> &recordDescrip
 	recordDescriptor.push_back(attr);
 
 	attr.name = "AttrLength";
+	attr.type = TypeInt;
+	attr.length = (AttrLength)4;
+	recordDescriptor.push_back(attr);
+
+	attr.name = "AttrAction";
 	attr.type = TypeInt;
 	attr.length = (AttrLength)4;
 	recordDescriptor.push_back(attr);

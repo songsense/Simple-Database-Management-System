@@ -39,7 +39,7 @@ typedef unsigned PageNum;
 #define MAX_PAGE_IN_MEM 1024		// defines the maximum # of pages opened in a file 262144
 
 // define pages for table data
-#define TABLE_PAGES_NUM 6
+#define TABLE_PAGES_NUM 2
 
 
 class FileHandle;
