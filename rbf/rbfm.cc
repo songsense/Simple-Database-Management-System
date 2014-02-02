@@ -378,7 +378,6 @@ RC RecordBasedFileManager::RecordBasedFileManager::updateRecord(FileHandle &file
 RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor,
 		const RID &rid, const string attributeName, void *data) {
-	//TODO
 	// read the page
 	RC rc = fileHandle.readPage(rid.pageNum, pageContent);
 	if (rc != SUCC) {
@@ -432,21 +431,31 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 		}
 	}
 
-	// read length of data
-	switch(recordDescriptor[index].type) {
-	case TypeInt:
-		lenAttr = sizeof(int);
-		break;
-	case TypeReal:
-		lenAttr = sizeof(float);
-		break;
-	case TypeVarChar:
-		lenAttr = *((int *)(record + offset));
-		offset += sizeof(int);
-		break;
+	if (index == recordDescriptor.size()) {
+		// no such attribute found
+		// return a default value
+		// the default value for Varchar is (int)0NULL
+		// the default value for Int is (int)0
+		// the default value for Real is (float)0.0
+		int defaultVal = 0;
+		memcpy(data, &defaultVal, sizeof(int));
+	} else {
+		// got the attribute hit
+		// read length of data
+		switch(recordDescriptor[index].type) {
+		case TypeInt:
+			lenAttr = sizeof(int);
+			break;
+		case TypeReal:
+			lenAttr = sizeof(float);
+			break;
+		case TypeVarChar:
+			lenAttr = *((int *)(record + offset))+sizeof(int);
+			break;
+		}
+		// read the attribute
+		memcpy(data, record+offset, lenAttr);
 	}
-	// read the attribute
-	memcpy(data, record+offset, lenAttr);
 
 	return rc;
 }
@@ -507,6 +516,14 @@ RC RecordBasedFileManager::reorganizePage(FileHandle &fileHandle,
 	// write page
 	return fileHandle.writePage(pageNumber, pageContent);
 }
+
+// reorganize the database
+RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor) {
+	return -1;
+	// TODO
+}
+
 // scan returns an iterator to allow the caller to go through the results one by one.
 RC RecordBasedFileManager::scan(FileHandle &fileHandle,
     const vector<Attribute> &recordDescriptor,
@@ -515,26 +532,87 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
     const void *value,                    // used in the comparison
     const vector<string> &attributeNames, // a list of projected attributes
     RBFM_ScanIterator &rbfm_ScanIterator) {
-	return -1;
-	// TODO
-}
-// reorganize the database
-RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
-		const vector<Attribute> &recordDescriptor) {
-	return -1;
-	// TODO
+
+	// map the projected attribute name
+	unordered_map<string, int> projMap;
+	for (int i = 0; i < attributeNames.size(); ++i) {
+		projMap[attributeNames[i]] = i;
+	}
+	// set recordDescriptor
+	rbfm_ScanIterator.recordDescriptor = recordDescriptor;
+	// set the index of comparison index and project indices
+	unordered_map<string, int>::iterator itr;
+	rbfm_ScanIterator.conditionAttrIndex = -1;
+	for (int i = 0; i < recordDescriptor.size(); ++i) {
+		// find the condition attribute index
+		if (recordDescriptor[i].name == conditionAttribute) {
+			rbfm_ScanIterator.conditionAttrIndex = i;
+		}
+		// find the projected attribute indices
+		itr = projMap.find(recordDescriptor[i].name);
+		if (itr != projMap.end()) {
+			rbfm_ScanIterator.projectedAttrIndices.push_back(itr->second);
+		}
+	}
+	// if failed to find, return with error
+	if (rbfm_ScanIterator.conditionAttrIndex == -1 ||
+			rbfm_ScanIterator.projectedAttrIndices.empty()) {
+		return SCANITER_COND_PROJ_NOT_FOUND;
+	}
+
+	// set the comp operator
+	rbfm_ScanIterator.compOp = compOp;
+
+	// set the value of comp attribute
+	unsigned recordLen = 0;
+	if (value != NULL) {
+		switch(recordDescriptor[rbfm_ScanIterator.conditionAttrIndex].type) {
+		case TypeInt:
+			recordLen = sizeof(int);
+			break;
+		case TypeReal:
+			recordLen = sizeof(float);
+			break;
+		case TypeVarChar:
+			recordLen = sizeof(int) + *((int *)value);
+			break;
+		}
+		rbfm_ScanIterator.value = new char[recordLen+1];
+		memcpy(rbfm_ScanIterator.value, value, recordLen);
+		rbfm_ScanIterator.value[recordLen] = '\0'; // in case the value is a string
+	} else {
+		rbfm_ScanIterator.value = NULL;
+	}
+
+	rbfm_ScanIterator.curRid.pageNum = TABLE_PAGES_NUM;
+	rbfm_ScanIterator.curRid.slotNum = 1; // start from 1
+
+	return SUCC;
 }
 
 /*
  * Iterator
  */
+RBFM_ScanIterator::RBFM_ScanIterator() :
+		conditionAttrIndex(-1),
+		compOp(NO_OP), value(NULL){
+
+}
+RBFM_ScanIterator::~RBFM_ScanIterator() {
+	if (value != NULL)
+		delete []value;
+}
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+
+
+
 	// TODO
 	return RBFM_EOF;
 }
 RC RBFM_ScanIterator::close() {
-	// TODO
-	return -1;
+	if (value != NULL)
+		delete []value;
+	return SUCC;
 }
 
 /*
@@ -722,7 +800,6 @@ void RecordBasedFileManager::setForwardRID(const RID &rid, FieldAddress &offset)
 /*
  *		Middleware: Version Manager
  */
-//TODO
 VersionManager::VersionManager() {
 	createAttrRecordDescriptor(recordAttributeDescriptor);
 }
@@ -807,6 +884,19 @@ RC VersionManager::initTableVersionInfo(const string &tableName,
 	attrMap[tableName] = recordDescriptorArray;
 	return SUCC;
 }
+// get version number publicly
+RC VersionManager::getVersionNumber(const string &tableName,
+		VersionNumber &ver) {
+	VersionMap::iterator itr = versionMap.find(tableName);
+	if(itr == versionMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+
+	ver = itr->second;
+
+	return SUCC;
+}
+
 // get the attributes of a version
 // Note that once load a table, the history attributes are cached
 RC VersionManager::getAttributes(const string &tableName, vector<Attribute> &attrs,
@@ -951,6 +1041,149 @@ RC VersionManager::dropAttribute(const string &tableName,
 	}
 
 	return SUCC;
+}
+
+// translate a data to latest version
+RC VersionManager::translateData2LastedVersion(const string &tableName,
+		const VersionNumber &currentVersion,
+		const void *oldData, void *latestData) {
+	AttrMap::iterator itrAttr = attrMap.find(tableName);
+	if (itrAttr == attrMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+	VersionMap::iterator itrVer = versionMap.find(tableName);
+	if (itrVer == versionMap.end()) {
+		return VERSION_TABLE_NOT_FOUND;
+	}
+
+	if (currentVersion > itrVer->second) {
+		return VERSION_OVERFLOW;
+	}
+
+	// get the attribute of the old data
+	vector<Attribute> oldAttrs;
+	RC rc = getAttributes(tableName, oldAttrs, currentVersion);
+	if (rc != SUCC) {
+		cerr << "translateData2LastedVersion: get attribute " << rc << endl;
+		return rc;
+	}
+
+	// if the currentVersion is the lasted version
+	// copy and return
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	if (currentVersion == itrVer->second) {
+		unsigned oldDataSize = rbfm->getRecordSize(oldData, oldAttrs);
+		memcpy(latestData, oldData, oldDataSize);
+		return SUCC;
+	}
+
+	// if not, need to load the first page to get the version history
+	FileHandle fileHandle;
+	rc = rbfm->openFile(tableName, fileHandle);
+	if (rc != SUCC) {
+		cerr << "translateData2LastedVersion: open file " << rc << endl;
+		return rc;
+	}
+	// load page 0
+	rc = fileHandle.readPage(0, page);
+	if (rc != SUCC) {
+		cerr << "translateData2LastedVersion: load page 0 " << rc << endl;
+		return rc;
+	}
+	VersionInfoFrame verInfoFrame;
+	vector<Attribute> latestAttrs;
+	rc = getAttributes(tableName, latestAttrs, itrVer->second);
+	if (rc != SUCC) {
+		cerr << "translateData2LastedVersion: get attribute 2 " << rc << endl;
+		return rc;
+	}
+	// initial change log,
+	// if it is 'n', stop;
+	// it it is 'a', add default;
+	// if it is 'r', original real; if it is 'i', original int; if it is 'v', original varchar;
+	// if it is 'R', delete real; if it is 'I', delete int; if it is 'V', delete varchar;
+	vector<int> historyChangeLog(oldAttrs.size() + latestAttrs.size(), 'n');
+	for (int i = 0; i < oldAttrs.size(); ++i) {
+		switch(oldAttrs[i].type) {
+		case TypeInt:
+			historyChangeLog[i] = 'i';
+			break;
+		case TypeVarChar:
+			historyChangeLog[i] = 'v';
+			break;
+		case TypeReal:
+			historyChangeLog[i] = 'r';
+			break;
+		}
+	}
+	for (char ver = currentVersion; ver < itrVer->second; ++ver) {
+		// get the change log of the version
+		get_ithVersionInfo(page, ver, verInfoFrame);
+		if (verInfoFrame.verChangeAction == ADD_ATTRIBUTE) {
+			// if an attribute is added
+			// the attribute is added to the tail
+			historyChangeLog[verInfoFrame.AttrColumn] = 'a';
+		} else {
+			// if the attribute is dropped
+			switch(verInfoFrame.attrType) {
+			case TypeInt:
+				historyChangeLog[verInfoFrame.AttrColumn] = 'I';
+				break;
+			case TypeVarChar:
+				historyChangeLog[verInfoFrame.AttrColumn] = 'V';
+				break;
+			case TypeReal:
+				historyChangeLog[verInfoFrame.AttrColumn] = 'R';
+				break;
+			}
+		}
+	}
+
+	// restore data to latest version with help of history change log
+	char *dest = (char *)latestData;
+	char *src = (char *)oldData;
+	int defaultVal = 0;
+	int len = 0;
+	for (int i = 0; i < historyChangeLog.size(); ++i) {
+		if (historyChangeLog[i] == 'n') // reach the end quit
+			break;
+		switch(historyChangeLog[i]) {
+		case 'i':
+			memcpy(dest, src, sizeof(int));
+			dest += sizeof(int);
+			src += sizeof(int);
+			break;
+		case 'r':
+			memcpy(dest, src, sizeof(float));
+			dest += sizeof(float);
+			src += sizeof(float);
+			break;
+		case 'v':
+			len = *((int *)src) + sizeof(int);
+			memcpy(dest, src,  len);
+			dest += len;
+			src += len;
+			break;
+		case 'a':
+			memcpy(dest, &defaultVal, sizeof(int));
+			dest += sizeof(int);
+			src += sizeof(int);
+			break;
+		case 'R':
+			src += sizeof(float);
+			break;
+		case 'V':
+			len = *((int *)src) + sizeof(int);
+			src += len;
+			break;
+		case 'I':
+			src += sizeof(int);
+			break;
+		}
+	}
+
+	return SUCC;
+
 }
 
 void VersionManager::eraseTableVersionInfo(const string &tableName) {

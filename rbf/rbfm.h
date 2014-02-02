@@ -83,15 +83,23 @@ The scan iterator is NOT required to be implemented for part 1 of the project
 //  }
 //  rbfmScanIterator.close();
 
-
+#define SCANITER_COND_PROJ_NOT_FOUND 60
 class RBFM_ScanIterator {
 public:
-  RBFM_ScanIterator() {};
-  ~RBFM_ScanIterator() {};
+  RBFM_ScanIterator();
+  ~RBFM_ScanIterator();
 
   // "data" follows the same format as RecordBasedFileManager::insertRecord()
   RC getNextRecord(RID &rid, void *data);
   RC close();
+
+  vector<Attribute> recordDescriptor;
+  int conditionAttrIndex;
+  CompOp compOp;
+  char *value;
+  vector<int> projectedAttrIndices;
+
+  RID curRid;
 };
 
 /*
@@ -101,7 +109,7 @@ public:
 // version information
 struct VersionInfoFrame {
 	char name[MAX_ATTR_LEN];
-	unsigned attrLength;
+	AttrLength attrLength;
 	AttrType attrType;
 	char verChangeAction;
 	char AttrColumn;
@@ -137,7 +145,8 @@ public:
 	VersionManager();
 	// open up a Table
 	RC initTableVersionInfo(const string &tableName, FileHandle &fileHandle);
-
+	// get version number publicly
+	RC getVersionNumber(const string &tableName, VersionNumber &ver);
 	// get the attributes of a version
 	RC getAttributes(const string &tableName, vector<Attribute> &attrs,
 			const VersionNumber ver);
@@ -145,7 +154,10 @@ public:
 	RC addAttribute(const string &tableName, const Attribute &attr, FileHandle &fileHandle);
 	// drop an attribute
 	RC dropAttribute(const string &tableName, const string &atttributeName, FileHandle &fileHandle);
-
+	// translate a data to latest version
+	RC translateData2LastedVersion(const string &table,
+			const VersionNumber &currentVersion,
+			const void *oldData, void *lastedData);
 	void eraseTableVersionInfo(const string &tableName);
 	void eraseAllInfo();
 
@@ -155,6 +167,7 @@ public:
 
 	void printAttributes(const string &tableName);
 	static VersionManager* instance();
+
 private:
 	// tools
 	// reset the attribute pages
@@ -176,6 +189,7 @@ private:
 private:
 	char page[PAGE_SIZE];
 	void createAttrRecordDescriptor(vector<Attribute> &recordDescriptor);
+	// void getCurrentTupleVersion(vector<Attribute>)
 };
 
 /*

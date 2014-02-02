@@ -46,8 +46,6 @@ public:
 
   RC deleteTable(const string &tableName);
 
-  RC openTable(const string &tableName, FileHandle &fileHandle);
-
   RC getAttributes(const string &tableName, vector<Attribute> &attrs);
 
   RC insertTuple(const string &tableName, const void *data, RID &rid);
@@ -88,13 +86,17 @@ protected:
   RelationManager();
   ~RelationManager();
 
-public: // tools
-
 private:
   static RelationManager *_rm;
-
-  // TODO must have a cache for the first TABLE_PAGES_NUM
   char page[PAGE_SIZE];
+  char tuple[PAGE_SIZE];
+  Attribute headVersionAttribute;
+  // tools
+  // add the version to data
+  void addVersion2Data(void *verData, const void *data,
+		  const VersionNumber &ver);
+  RC openTable(const string &tableName, FileHandle &fileHandle);
+  RC closeTable(const string &tableName, FileHandle &fileHandle);
 };
 
 #endif

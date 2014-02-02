@@ -224,8 +224,9 @@ void testRBFM_1() {
     	assert(rc == SUCC || rc == RC_RECORD_DELETED);
     	if (rc == RC_RECORD_DELETED)
     		cout << rc << endl;
-    	memcpy(empName, returnedData, 10);
-    	empName[10] = '\0';
+    	int len = *((int *)returnedData);
+    	memcpy(empName, (char *)returnedData+sizeof(int), len);
+    	empName[len] = '\0';
     	rc = rbfm->readAttribute(fileHandle, recordDescriptor, rid[i], attName[1], returnedData);
     	assert(rc == SUCC || rc == RC_RECORD_DELETED);
     	memcpy(&age, returnedData, sizeof(int));
@@ -382,6 +383,24 @@ void testRBFM_2() {
 
     cout << "VM Test Case 1 Passed!" << endl << endl;
 }
+
+void testRM_1(){
+	RelationManager *rm = RelationManager::instance();
+	string tableName = "test.db";
+
+	// create table
+	vector<Attribute> attrs;
+	createRecordDescriptor(atts);
+	RC rc = rm->createTable(tableName, attrs);
+	assert(rc == success);
+
+
+	rc = rm->deleteTable(tableName);
+	assert(rc == success);
+
+	cout << "test relation manager finish!" << endl;
+}
+
 int main() 
 {
   cout << "test..." << endl;
@@ -392,7 +411,7 @@ int main()
   testRBFM_2();
   testRBFM_1();
 
-
+  testRM_1();
   cout << "OK" << endl;
 }
 
