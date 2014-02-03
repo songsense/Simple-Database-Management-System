@@ -198,7 +198,7 @@ FileHandle::FileHandle():pFile(NULL),fileName("")
 
 FileHandle::~FileHandle()
 {
-	PagedFileManager::instance()->closeFile(*this);
+	//PagedFileManager::instance()->closeFile(*this);
 }
 
 // This method reads the page into the memory block pointed by data. The page should exist.

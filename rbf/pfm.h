@@ -8,6 +8,7 @@
 #include <list>
 #include <queue>
 #include <cstdlib>
+#include <cstring>
 #include <sys/stat.h>
 
 using namespace std;

@@ -6,9 +6,14 @@
 #include "../rbf/pfm.h"
 #include "../rbf/rbfm.h"
 #include "rm.h"
+#include "test_util.h"
 
-const int success = 0;
 using namespace std;
+
+char tuple[10][PAGE_SIZE];
+char returnedTuple[10][PAGE_SIZE];
+int tupleSize[10];
+RID rid[10];
 
 void rmTest()
 {
@@ -384,34 +389,215 @@ void testRBFM_2() {
     cout << "VM Test Case 1 Passed!" << endl << endl;
 }
 
-void testRM_1(){
+void testRM_createTable(const string &tableName, vector<Attribute> &attrs) {
+	//bookmark
+	cout << "test createTable starts!" << endl;
 	RelationManager *rm = RelationManager::instance();
-	string tableName = "test.db";
-
 	// create table
-	vector<Attribute> attrs;
-	createRecordDescriptor(atts);
+	cout << "create table " << tableName << endl;
 	RC rc = rm->createTable(tableName, attrs);
 	assert(rc == success);
-
-
-	rc = rm->deleteTable(tableName);
-	assert(rc == success);
-
-	cout << "test relation manager finish!" << endl;
+	cout << "test createTable finishes!" << endl;
+	cout << "===============================================" << endl;
 }
 
+void testRM_getAttribute(const string &tableName){
+	//bookmark
+	cout << "test getAttribute starts!" << endl;
+	RelationManager *rm = RelationManager::instance();
+	VersionManager *vm = VersionManager::instance();
+	RC rc;
+
+	// print the attribute in version manager
+	vm->printAttributes(tableName);
+
+	// read in attribute
+	vector<Attribute> attrs;
+	rc = rm->getAttributes(tableName, attrs);
+    for(unsigned i = 0; i < attrs.size(); i++)
+    {
+        cout << "Attribute Name: " << attrs[i].name << endl;
+        cout << "Attribute Type: " << (AttrType)attrs[i].type << endl;
+        cout << "Attribute Length: " << attrs[i].length << endl << endl;
+    }
+
+	cout << "test getAttribute finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
+void testRM_deleteTable(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	cout << "test deleteTable starts!" << endl;
+	cout << "delete table " << tableName << endl;
+	RC rc = rm->deleteTable(tableName);
+	assert(rc == success);
+	cout << "test deleteTable finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
+void testRM_insertTuple_readTuple(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+	cout << "test insertTuple starts!" << endl;
+
+	// get attribute
+	vector<Attribute> attrs;
+	rm->getAttributes(tableName, attrs);
+
+	// prepare tuple
+	prepareTuple(3, "Tom", 24, 179.1, 6500, tuple[0], &(tupleSize[0]));
+
+	// insert tuple
+	cout << "insert tuple" << endl;
+	rc = rm->insertTuple(tableName, tuple[0], rid[0]);
+	assert(rc == SUCC);
+
+	// read tuple
+	cout << "read tuple" << endl;
+	rc = rm->readTuple(tableName, rid[0], returnedTuple[0]);
+	assert(rc == success);
+
+	// print tuple
+	printTuple(returnedTuple[0], tupleSize[0]);
+
+	// compare tuple
+	assert(memcmp(tuple, returnedTuple[0], tupleSize[0]) == 0);
+
+	cout << "test insertTuple finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
+void testRM_InsertMultipleTuples(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+	cout << "test InsertMultipleTuples starts!" << endl;
+	// get attribute
+	vector<Attribute> attrs;
+	rm->getAttributes(tableName, attrs);
+
+	// prepare tuple
+	prepareTuple(5, "Jimmy", 25, 169.1, 5500, tuple[1], &(tupleSize[1]));
+	prepareTuple(5, "Teddy", 26, 189.1, 9500, tuple[2], &(tupleSize[2]));
+	prepareTuple(6, "Albert", 27, 176.1, 15500, tuple[3], &(tupleSize[3]));
+	prepareTuple(4, "Lucy", 28, 188.1, 3200, tuple[4], &(tupleSize[4]));
+
+	// insert tuple
+	cout << "insert tuple" << endl;
+	rc = rm->insertTuple(tableName, tuple[1], rid[1]);
+	assert(rc == SUCC);
+	rc = rm->insertTuple(tableName, tuple[2], rid[2]);
+	assert(rc == SUCC);
+	rc = rm->insertTuple(tableName, tuple[3], rid[3]);
+	assert(rc == SUCC);
+	rc = rm->insertTuple(tableName, tuple[4], rid[4]);
+	assert(rc == SUCC);
+
+	// read tuple
+	cout << "read tuple" << endl;
+	rc = rm->readTuple(tableName, rid[1], returnedTuple[1]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[2], returnedTuple[2]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[3], returnedTuple[3]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[4], returnedTuple[4]);
+	assert(rc == success);
+
+	// compare tuple
+	assert(memcmp(tuple[1], returnedTuple[1], tupleSize[1]) == 0);
+	assert(memcmp(tuple[2], returnedTuple[2], tupleSize[2]) == 0);
+	assert(memcmp(tuple[3], returnedTuple[3], tupleSize[3]) == 0);
+	assert(memcmp(tuple[4], returnedTuple[4], tupleSize[4]) == 0);
+
+	cout << "test InsertMultipleTuples finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
+void testRM_DeleteUpdateInsertTuple(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+
+	// delete 2nd tuple
+	cout << "delete 2nd tuple" << endl;
+	rc = rm->deleteTuple(tableName, rid[1]);
+	assert(rc == success);
+	// update 3rd tuple
+	cout << "update 3rd tuple" << endl;
+	prepareTuple(8, "Jr.Teddy", 27, 189.2, 9501, tuple[2], &(tupleSize[2]));
+	rc = rm->updateTuple(tableName, tuple[2], rid[2]);
+	assert(rc == success);
+	// delete 4th tuple
+	cout << "delete 4th tuple" << endl;
+	rc = rm->deleteTuple(tableName, rid[3]);
+	assert(rc == success);
+	// delete 3rd tuple
+	cout << "delete 3rd tuple" << endl;
+	rc = rm->deleteTuple(tableName, rid[2]);
+	assert(rc == success);
+	// insert 6th tuple
+	cout << "insert 6th tuple" << endl;
+	prepareTuple(4, "John", 39, 178.5, 4300, tuple[5], &(tupleSize[5]));
+	rc = rm->insertTuple(tableName, tuple[5], rid[5]);
+	assert(rc == success);
+	// update 5th tuple
+	cout << "update 5th tuple" << endl;
+	prepareTuple(7, "Sr.Lucy", 29, 188.5, 3231, tuple[4], &(tupleSize[4]));
+	rc = rm->updateTuple(tableName, tuple[4], rid[4]);
+	assert(rc == success);
+	// read 1, 5, 6 tuple
+	cout << "read 1, 5, 6 tuple" << endl;
+	rc = rm->readTuple(tableName, rid[0], returnedTuple[0]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[4], returnedTuple[4]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[5], returnedTuple[5]);
+	assert(rc == success);
+	// test consistency
+	assert(memcmp(tuple[0], returnedTuple[0], tupleSize[0]) == 0);
+	assert(memcmp(tuple[4], returnedTuple[4], tupleSize[4]) == 0);
+	assert(memcmp(tuple[5], returnedTuple[5], tupleSize[5]) == 0);
+	// print 1, 5, 6 tuple
+	printTuple(returnedTuple[0], tupleSize[0]);
+	printTuple(returnedTuple[4], tupleSize[4]);
+	printTuple(returnedTuple[5], tupleSize[5]);
+
+	cout << "test DeleteUpdateInsertTuple starts!" << endl;
+	cout << "test DeleteUpdateInsertTuple finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+void testRM_(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+	cout << "test  starts!" << endl;
+	cout << "test  finishes!" << endl;
+	cout << "===============================================" << endl;
+}
 int main() 
 {
   cout << "test..." << endl;
 
   rmTest();
-  // other tests go here
-  // test the newly added rbfm features
   testRBFM_2();
   testRBFM_1();
+  // other tests go here
+  // test the newly added rbfm features
+  vector<Attribute> attrs;
+  createRecordDescriptor(attrs);
+  const string tableName = "test";
+  remove(tableName.c_str());
 
-  testRM_1();
-  cout << "OK" << endl;
+  testRM_createTable(tableName, attrs);
+  testRM_getAttribute(tableName);
+  testRM_insertTuple_readTuple(tableName);
+  testRM_InsertMultipleTuples(tableName);
+  testRM_DeleteUpdateInsertTuple(tableName);
+  testRM_deleteTable(tableName);
+  memProfile();
+  cout << "O.K." << endl;
 }
 

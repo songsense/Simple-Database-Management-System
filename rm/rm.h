@@ -88,15 +88,17 @@ protected:
 
 private:
   static RelationManager *_rm;
-  char page[PAGE_SIZE];
   char tuple[PAGE_SIZE];
   Attribute headVersionAttribute;
   // tools
   // add the version to data
   void addVersion2Data(void *verData, const void *data,
-		  const VersionNumber &ver);
+		  const VersionNumber &ver, const unsigned &recordSize);
   RC openTable(const string &tableName, FileHandle &fileHandle);
   RC closeTable(const string &tableName, FileHandle &fileHandle);
+  // get the record size: start from the second attr excluding the Ver
+  unsigned getRecordSize(const void *formattedData,
+		  const vector<Attribute> &recordDescriptor);
 };
 
 #endif

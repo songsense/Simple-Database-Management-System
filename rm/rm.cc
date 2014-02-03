@@ -175,8 +175,11 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 		return rc;
 	}
 
+	// get the size of the record
+	unsigned recordSize = getRecordSize(data, attrs);
+
 	// add version to the tuple
-	addVersion2Data(tuple, data, curVer);
+	addVersion2Data(tuple, data, curVer, recordSize);
 
 	// insert the tuple
 	rc = rbfm->insertRecord(fileHandle, attrs, tuple, rid);
@@ -291,9 +294,11 @@ RC RelationManager::updateTuple(const string &tableName, const void *data,
 		return rc;
 	}
 
+	// get the size of the record
+	unsigned recordSize = getRecordSize(data, attrs);
 
 	// add version to the tuple
-	addVersion2Data(tuple, data, curVer);
+	addVersion2Data(tuple, data, curVer, recordSize);
 
 	// update the tuple
 	rc = rbfm->updateRecord(fileHandle, attrs, tuple, rid);
@@ -330,6 +335,12 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 
 	// get the current version attribute
 	vector<Attribute> attrs;
+	rc = getAttributes(tableName, attrs);
+	if (rc != SUCC) {
+		cerr << "readTuple: read the attribute " << rc << endl;
+		return rc;
+	}
+
 	rc = rbfm->readRecord(fileHandle, attrs, rid, tuple);
 	if (rc != SUCC) {
 		cerr << "readTuple: read the record " << rc << endl;
@@ -338,13 +349,14 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 
 	// get the version of the data
 	VersionNumber ver = VersionNumber(*((int *)tuple));
-	char *tupleData = (char *)tuple + sizeof(int);
-
-	// get the attrs with given version
-	rc = vm->getAttributes(tableName, attrs, ver);
 
 	// translate the data to the latest version
-	rc = vm->translateData2LastedVersion(tableName, ver, tupleData, data);
+	char latestTuple[PAGE_SIZE];
+	rc = vm->translateData2LastedVersion(tableName, ver, tuple, latestTuple);
+	// minus sizeof(int) for it is a TypeInt that holds the version number
+	unsigned recordSize = rbfm->getRecordSize(latestTuple, attrs)-sizeof(int);
+	memcpy(data, latestTuple + sizeof(int), recordSize);
+
 	if (rc != SUCC) {
 		cerr << "readTuple: translate tuple to latest version " << rc << endl;
 		return rc;
@@ -518,12 +530,39 @@ RC RelationManager::reorganizeTable(const string &tableName)
 
 // add the version to data
 void RelationManager::addVersion2Data(void *verData, const void *data,
-		const VersionNumber &ver) {
+		const VersionNumber &ver, const unsigned &recordSize) {
 	int verInt = (int)ver;
 	memcpy(verData, &verInt, sizeof(int));
+	memcpy((char *)verData + sizeof(int), data, recordSize);
 }
 
+// get the record size: start from the second attr excluding the Ver
+unsigned RelationManager::getRecordSize(const void *buf,
+		  const vector<Attribute> &rD) {
+	unsigned recordSize = 0;
+	char *buffer = (char *)buf;
 
+	unsigned numFields = rD.size();
+
+	for (int i = 1; i < numFields; ++i) {
+		switch(rD[i].type) {
+		case TypeInt:
+			recordSize += sizeof(int);
+			buffer += sizeof(int);
+			break;
+		case TypeReal:
+			recordSize += sizeof(int);
+			buffer += sizeof(int);
+			break;
+		case TypeVarChar:
+			int len = *((int *)(buffer));
+			recordSize += sizeof(int) + len;
+			buffer += sizeof(int) + len;
+			break;
+		}
+	}
+	return recordSize;
+}
 
 
 

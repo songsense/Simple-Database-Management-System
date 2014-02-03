@@ -92,14 +92,51 @@ public:
   // "data" follows the same format as RecordBasedFileManager::insertRecord()
   RC getNextRecord(RID &rid, void *data);
   RC close();
+  // compare the two attribute data
+  bool compareValue(const void *record, const AttrType &type);
+  template <typename T>
+  bool compareValueTemplate(T const &lhs, T const &rhs) {
+	  switch(compOp) {
+	  case EQ_OP:
+		  return lhs == rhs;
+		  break;
+	  case LT_OP:
+		  return lhs < rhs;
+		  break;
+	  case GT_OP:
+		  return lhs > rhs;
+		  break;
+	  case LE_OP:
+		  return lhs <= rhs;
+		  break;
+	  case GE_OP:
+		  return lhs >= rhs;
+		  break;
+	  case NE_OP:
+		  return lhs != rhs;
+		  break;
+	  default:
+		  return true;
+	  }
+	  return true;
+  }
+  // prepare the data
+  RC prepareData(FileHandle &fileHandle,
+		  const vector<Attribute> &recordDescriptor,
+		  const RID &rid, void *data);
 
-  vector<Attribute> recordDescriptor;
-  int conditionAttrIndex;
   CompOp compOp;
   char *value;
-  vector<int> projectedAttrIndices;
-
+  PageNum totalPageNum;
   RID curRid;
+  string tableName;
+  string conditionName;
+  AttrType conditionType;
+  vector<string> projectedName;
+  vector<AttrType> projectedType;
+  char page[PAGE_SIZE];
+  char tuple[PAGE_SIZE];
+  char attrData[PAGE_SIZE];
 };
 
 /*
@@ -128,7 +165,7 @@ const int NO_ACTION_ATTRIBUTE = 0;
 #define ATTR_NOT_FOUND 53
 
 // define char as version
-typedef unsigned char VersionNumber;
+typedef unsigned VersionNumber;
 // define record descriptor
 typedef vector<Attribute> RecordDescriptor;
 // define member types

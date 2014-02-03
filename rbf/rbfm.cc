@@ -163,7 +163,8 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 	}
 
 	// get the slot directory info
-	char *slot = (char *)pageContent + slotDir.recordOffset;
+	char *slot = pageContent + slotDir.recordOffset;
+
 	// translate the slot record to printable data
 	memcpy(data, slot, slotDir.recordLength);
 
@@ -533,31 +534,48 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
     const vector<string> &attributeNames, // a list of projected attributes
     RBFM_ScanIterator &rbfm_ScanIterator) {
 
-	// map the projected attribute name
-	unordered_map<string, int> projMap;
+	// clear state of all the internal variables
+	if (rbfm_ScanIterator.value != NULL)
+		delete []rbfm_ScanIterator.value;
+
+	VersionManager *vm = VersionManager::instance();
+	vector<Attribute> rd;
+	RC rc;
+	AttrType conditionAttrType;
+	vector<AttrType> projectedType(attributeNames.size());
+
+	unordered_map<string, int> projAttrMap;
 	for (int i = 0; i < attributeNames.size(); ++i) {
-		projMap[attributeNames[i]] = i;
+		projAttrMap[attributeNames[i]] = i;
 	}
-	// set recordDescriptor
-	rbfm_ScanIterator.recordDescriptor = recordDescriptor;
-	// set the index of comparison index and project indices
+
+
+	// get the type of the conditionAttribute
+	bool hitFlag = false;
+	int hitTimes = 0;
 	unordered_map<string, int>::iterator itr;
-	rbfm_ScanIterator.conditionAttrIndex = -1;
 	for (int i = 0; i < recordDescriptor.size(); ++i) {
-		// find the condition attribute index
-		if (recordDescriptor[i].name == conditionAttribute) {
-			rbfm_ScanIterator.conditionAttrIndex = i;
+		if(recordDescriptor[i].name == conditionAttribute) {
+			conditionAttrType = recordDescriptor[i].type;
+			hitFlag = true;
 		}
-		// find the projected attribute indices
-		itr = projMap.find(recordDescriptor[i].name);
-		if (itr != projMap.end()) {
-			rbfm_ScanIterator.projectedAttrIndices.push_back(itr->second);
+		itr = projAttrMap.find(recordDescriptor[i].name);
+		if (itr != projAttrMap.end()) {
+			projectedType[itr->second] = recordDescriptor[i].type;
+			++hitTimes;
 		}
 	}
-	// if failed to find, return with error
-	if (rbfm_ScanIterator.conditionAttrIndex == -1 ||
-			rbfm_ScanIterator.projectedAttrIndices.empty()) {
+	if (!hitFlag || hitTimes != attributeNames.size()) {
+		cerr << "scan: cannot find the condition attribute" << endl;
 		return SCANITER_COND_PROJ_NOT_FOUND;
+	}
+
+	// get current version
+	VersionNumber curVersion;
+	rc = vm->getVersionNumber(fileHandle.fileName, curVersion);
+	if (rc != SUCC) {
+		cerr << "RecordBasedFileManager::scan: get version number error " << rc << endl;
+		return rc;
 	}
 
 	// set the comp operator
@@ -566,7 +584,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 	// set the value of comp attribute
 	unsigned recordLen = 0;
 	if (value != NULL) {
-		switch(recordDescriptor[rbfm_ScanIterator.conditionAttrIndex].type) {
+		switch(conditionAttrType) {
 		case TypeInt:
 			recordLen = sizeof(int);
 			break;
@@ -584,8 +602,23 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 		rbfm_ScanIterator.value = NULL;
 	}
 
-	rbfm_ScanIterator.curRid.pageNum = TABLE_PAGES_NUM;
-	rbfm_ScanIterator.curRid.slotNum = 1; // start from 1
+	// set the initial state of iterator
+	rbfm_ScanIterator.curRid.pageNum = TABLE_PAGES_NUM; // start from user page
+	rbfm_ScanIterator.curRid.slotNum = 0; // start from 1
+
+	// set the total page number
+	rbfm_ScanIterator.totalPageNum = fileHandle.getNumberOfPages();
+	// set the table Name
+	rbfm_ScanIterator.tableName = fileHandle.fileName;
+	// set the condition name
+	rbfm_ScanIterator.conditionName = conditionAttribute;
+	// set the conditon attr type
+	rbfm_ScanIterator.conditionType = conditionAttrType;
+	// set the projected name
+	rbfm_ScanIterator.projectedName = attributeNames;
+	// set the projected attr type
+	rbfm_ScanIterator.projectedType = projectedType;
+
 
 	return SUCC;
 }
@@ -594,8 +627,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
  * Iterator
  */
 RBFM_ScanIterator::RBFM_ScanIterator() :
-		conditionAttrIndex(-1),
-		compOp(NO_OP), value(NULL){
+		compOp(NO_OP), value(NULL), totalPageNum(0), conditionType(TypeInt){
 
 }
 RBFM_ScanIterator::~RBFM_ScanIterator() {
@@ -603,18 +635,166 @@ RBFM_ScanIterator::~RBFM_ScanIterator() {
 		delete []value;
 }
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	VersionManager *vm = VersionManager::instance();
+	RC rc;
 
+	FileHandle fileHandle;
+	// open file handle
+	rc = rbfm->openFile(tableName, fileHandle);
+	if (rc != SUCC) {
+		cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
+		return rc;
+	}
 
+	bool flag_NOT_EOF = true;
+	vector<Attribute> attrs;
+	if(curRid.pageNum >= totalPageNum)
+		flag_NOT_EOF = false;
+	// iterate to each page
+	for (PageNum pageNum = curRid.pageNum;
+			flag_NOT_EOF && pageNum < totalPageNum; ++pageNum) {
+		// read the page
+		rc = fileHandle.readPage(pageNum, page);
+		if (rc != SUCC) {
+			cerr << "RBFM_ScanIterator::getNextRecord: read page error " << rc << endl;
+			return rc;
+		}
 
-	// TODO
+		// get the total number slots
+		SlotNum totalSlotNum = rbfm->getNumSlots(page);
+		if (curRid.slotNum + 1 > totalSlotNum &&
+				curRid.pageNum >= totalPageNum - 1)
+			flag_NOT_EOF = false;
+		for (SlotNum slotNum = curRid.slotNum+1;
+				flag_NOT_EOF && slotNum <= totalSlotNum; ++slotNum) {
+			// read the current data
+			RID rid;
+			rid.pageNum = pageNum;
+			rid.slotNum = slotNum;
+			rc = rbfm->readRecord(fileHandle, attrs, rid, tuple);
+			if (rc != SUCC) {
+				cerr << "RBFM_ScanIterator::getNextRecord: read record error " << rc << endl;
+				return rc;
+			}
+			// get the version number of current data
+			VersionNumber curVer = *((int *)tuple);
+			// get the current attribute descriptor of  data
+			rc = vm->getAttributes(tableName, attrs, curVer);
+			if (rc != SUCC) {
+				cerr << "RBFM_ScanIterator::getNextRecord: read attribute error " << rc << endl;
+				return rc;
+			}
+
+			// get the condition value
+			rc = rbfm->readAttribute(fileHandle, attrs, rid, conditionName, attrData);
+			if (rc != SUCC) {
+				cerr << "RBFM_ScanIterator::getNextRecord: read attribute value error " << rc << endl;
+				return rc;
+			}
+			// the value meets the requirement, prepare output data
+			if (compareValue(attrData, conditionType)) {
+				rc = prepareData(fileHandle, attrs, rid, attrData);
+				if (rc != SUCC) {
+					cerr << "RBFM_ScanIterator::getNextRecord: prepare data error " << rc << endl;
+					return rc;
+				}
+				// save the current RID
+				curRid.pageNum = rid.pageNum, curRid.slotNum = rid.slotNum;
+				// exit
+				rc = rbfm->closeFile(fileHandle);
+				if (rc != SUCC) {
+					cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
+					return rc;
+				}
+				return SUCC;
+			}
+		}
+		if (curRid.slotNum + 1 > totalSlotNum &&
+				curRid.pageNum >= totalPageNum - 1)
+			flag_NOT_EOF = false;
+	}
+
+	rc = rbfm->closeFile(fileHandle);
+	if (rc != SUCC) {
+		cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
+		return rc;
+	}
+
 	return RBFM_EOF;
+
+}
+RC RBFM_ScanIterator::prepareData(FileHandle &fileHandle,
+		  const vector<Attribute> &recordDescriptor,
+		  const RID &rid, void *data) {
+	char *returnedData = (char *)data;
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	RC rc;
+
+	for (int i = 0; i < projectedName.size(); ++i) {
+		// get the condition value
+		rc = rbfm->readAttribute(fileHandle, recordDescriptor,
+				rid, projectedName[i], returnedData);
+		if (rc != SUCC) {
+			cerr << "RBFM_ScanIterator::getNextRecord: read attribute value error " << rc << endl;
+			return rc;
+		}
+		switch(projectedType[i]) {
+		case TypeInt:
+			returnedData += sizeof(int);
+			break;
+		case TypeReal:
+			returnedData += sizeof(float);
+			break;
+		case TypeVarChar:
+			int len = *((int *)returnedData);
+			returnedData += sizeof(int) + len;
+			break;
+		}
+	}
+	return SUCC;
+}
+// compare the two attribute data
+bool RBFM_ScanIterator::compareValue(const void *record, const AttrType &type) {
+	if (compOp == NO_OP)
+		return true;
+	int lhs_int(0), rhs_int(0), len_lhs(0), len_rhs(0);
+	float lhs_float(0.), rhs_float(0.);
+	char *lhs_cstr(NULL), *rhs_cstr(NULL);
+	string lhs_str, rhs_str;
+	switch(type) {
+	case TypeInt:
+		lhs_int = *((int *)record);
+		rhs_int = *((int *)value);
+		return compareValueTemplate(lhs_int, rhs_int);
+		break;
+	case TypeReal:
+		lhs_float = *((float *)record);
+		rhs_float = *((float *)value);
+		return compareValueTemplate(lhs_float, rhs_float);
+		break;
+	case TypeVarChar:
+		len_lhs = *((int *)record);
+		len_rhs = *((int *)value);
+		lhs_cstr = new char[len_lhs+1];
+		rhs_cstr = new char[len_rhs+1];
+		memcpy(lhs_cstr, record, len_lhs);
+		memcpy(rhs_cstr, value, len_rhs);
+		lhs_cstr[len_lhs] = '\0';
+		rhs_cstr[len_rhs] = '\0';
+		lhs_str.assign(lhs_cstr);
+		rhs_str.assign(rhs_cstr);
+		delete []lhs_cstr;
+		delete []rhs_cstr;
+		return compareValueTemplate(lhs_str, rhs_str);
+		break;
+	}
 }
 RC RBFM_ScanIterator::close() {
 	if (value != NULL)
 		delete []value;
 	return SUCC;
 }
-
 /*
  * Tools
  */
