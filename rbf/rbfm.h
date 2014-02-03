@@ -203,8 +203,13 @@ public:
 			FileHandle &fileHandle);
 
 	void printAttributes(const string &tableName);
-	static VersionManager* instance();
-
+	static VersionManager* instance();/*
+	void print(){
+		cout << "print all in version map" << endl;
+		for (auto itr_1 = versionMap.begin(); itr_1 != versionMap.end(); ++itr_1) {
+			cout << itr_1->first << "\t" << itr_1->second << endl;
+		}
+	}*/
 private:
 	// tools
 	// reset the attribute pages

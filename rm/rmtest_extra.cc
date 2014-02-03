@@ -10,11 +10,40 @@
 
 using namespace std;
 
-char tuple[10][PAGE_SIZE];
-char returnedTuple[10][PAGE_SIZE];
-int tupleSize[10];
-RID rid[10];
-
+char tuple[30][PAGE_SIZE];
+char returnedTuple[30][PAGE_SIZE];
+int tupleSize[30];
+RID rid[30];
+void printTuples(const string& tableName, RelationManager* rm, const vector<int> &index) {
+	// begin raed tuple
+	char data[PAGE_SIZE];
+	int strLen = 0;
+	char str[PAGE_SIZE];
+	// get attribute
+	vector<Attribute> attrs;
+	rm->getAttributes(tableName, attrs);
+	for (int i = 0; i < index.size(); ++i) {
+		for (int j = 0; j < attrs.size(); ++j) {
+			rm->readAttribute(tableName, rid[index[i]], attrs[j].name, data);
+			cout << attrs[j].name << "\t";
+			switch (attrs[j].type) {
+			case TypeInt:
+				cout << *((int*) (data)) << "\t";
+				break;
+			case TypeReal:
+				cout << *((float*) (data)) << "\t";
+				break;
+			case TypeVarChar:
+				strLen = *((int*) (data));
+				memcpy(str, data + sizeof(int), strLen + 1);
+				str[strLen] = '\0';
+				cout << str << "\t";
+				break;
+			}
+		}
+		cout << "\n-------------------------" << endl;
+	}
+}
 void rmTest()
 {
   // RM *rm = RM::instance();
@@ -39,6 +68,61 @@ void prepareRecord(const int nameLength, const string &name, const int age, cons
 
     memcpy((char *)buffer + offset, &salary, sizeof(int));
     offset += sizeof(int);
+
+    *recordSize = offset;
+}
+void prepareTuple_AfterDropSalary(const int nameLength,
+		const string &name, const int age, const float height,
+		const int aliasLength, const string &alias, const int level, const float access,
+		void *buffer, int *recordSize) {
+	int offset = 0;
+
+    memcpy((char *)buffer + offset, &nameLength, sizeof(int));
+    offset += sizeof(int);
+    memcpy((char *)buffer + offset, name.c_str(), nameLength);
+    offset += nameLength;
+
+    memcpy((char *)buffer + offset, &age, sizeof(int));
+    offset += sizeof(int);
+
+    memcpy((char *)buffer + offset, &height, sizeof(float));
+    offset += sizeof(float);
+
+    memcpy((char *)buffer + offset, &aliasLength, sizeof(int));
+    offset += sizeof(int);
+    memcpy((char *)buffer + offset, alias.c_str(), aliasLength);
+    offset += aliasLength;
+
+    memcpy((char *)buffer + offset, &level, sizeof(int));
+    offset += sizeof(int);
+
+    memcpy((char *)buffer + offset, &access, sizeof(float));
+    offset += sizeof(float);
+
+    *recordSize = offset;
+}
+void prepareTuple_AfterDropSalaryAlias(const int nameLength,
+		const string &name, const int age, const float height,
+		const int level, const float access,
+		void *buffer, int *recordSize) {
+	int offset = 0;
+
+    memcpy((char *)buffer + offset, &nameLength, sizeof(int));
+    offset += sizeof(int);
+    memcpy((char *)buffer + offset, name.c_str(), nameLength);
+    offset += nameLength;
+
+    memcpy((char *)buffer + offset, &age, sizeof(int));
+    offset += sizeof(int);
+
+    memcpy((char *)buffer + offset, &height, sizeof(float));
+    offset += sizeof(float);
+
+    memcpy((char *)buffer + offset, &level, sizeof(int));
+    offset += sizeof(int);
+
+    memcpy((char *)buffer + offset, &access, sizeof(float));
+    offset += sizeof(float);
 
     *recordSize = offset;
 }
@@ -569,6 +653,200 @@ void testRM_DeleteUpdateInsertTuple(const string &tableName) {
 	cout << "test DeleteUpdateInsertTuple finishes!" << endl;
 	cout << "===============================================" << endl;
 }
+void testRM_insert_readAttribute(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+	cout << "test insert_readAttribute starts!" << endl;
+
+	// get attribute
+	vector<Attribute> attrs;
+	rm->getAttributes(tableName, attrs);
+
+	// prepare tuple
+	prepareTuple(1, "a", 25, 169.1, 5500, tuple[6], &(tupleSize[6]));
+	prepareTuple(2, "aa", 26, 189.1, 9500, tuple[7], &(tupleSize[7]));
+	prepareTuple(1, "b", 27, 176.1, 15500, tuple[8], &(tupleSize[8]));
+	prepareTuple(2, "bb", 28, 188.1, 3200, tuple[9], &(tupleSize[9]));
+
+	// insert tuple
+	cout << "insert tuple" << endl;
+	rc = rm->insertTuple(tableName, tuple[6], rid[6]);
+	assert(rc == SUCC);
+	rc = rm->insertTuple(tableName, tuple[7], rid[7]);
+	assert(rc == SUCC);
+	rc = rm->insertTuple(tableName, tuple[8], rid[8]);
+	assert(rc == SUCC);
+	rc = rm->insertTuple(tableName, tuple[9], rid[9]);
+	assert(rc == SUCC);
+
+	// read tuple
+	cout << "read tuple" << endl;
+	rc = rm->readTuple(tableName, rid[6], returnedTuple[6]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[7], returnedTuple[7]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[8], returnedTuple[8]);
+	assert(rc == success);
+	rc = rm->readTuple(tableName, rid[9], returnedTuple[9]);
+	assert(rc == success);
+
+	// compare tuple
+	assert(memcmp(tuple[6], returnedTuple[6], tupleSize[6]) == 0);
+	assert(memcmp(tuple[7], returnedTuple[7], tupleSize[7]) == 0);
+	assert(memcmp(tuple[8], returnedTuple[8], tupleSize[8]) == 0);
+	assert(memcmp(tuple[9], returnedTuple[9], tupleSize[9]) == 0);
+
+	// begin raed tuple
+	vector<int> index;
+	index.push_back(0);index.push_back(4);index.push_back(5);index.push_back(6);
+	index.push_back(7);index.push_back(8);index.push_back(9);
+	printTuples(tableName, rm, index);
+
+
+	cout << "test insert_readAttribute finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
+void testRM_addAttribute(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+	cout << "test addAttribute starts!" << endl;
+
+	cout << "add a varchar" << endl;
+	Attribute attr;
+	attr.type = TypeVarChar;
+	attr.name = "Alias";
+	attr.length = 20;
+	rc = rm->addAttribute(tableName,attr);
+	assert(rc == success);
+	cout << "add an int" << endl;
+	attr.type = TypeInt;
+	attr.name = "Level";
+	attr.length = sizeof(int);
+	rc = rm->addAttribute(tableName,attr);
+	assert(rc == success);
+	cout << "add a real" << endl;
+	attr.type = TypeReal;
+	attr.name = "Assess";
+	attr.length = sizeof(float);
+	rc = rm->addAttribute(tableName,attr);
+	assert(rc == success);
+
+
+	// begin raed tuple
+	vector<int> index;
+	index.push_back(0);index.push_back(4);index.push_back(5);index.push_back(6);
+	index.push_back(7);index.push_back(8);index.push_back(9);
+	printTuples(tableName, rm, index);
+	cout << "test addAttribute finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
+void testRM_dropAttribute(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+
+	RC rc;
+	cout << "test dropAttribute starts!" << endl;
+
+	cout << "drop attribute" << endl;
+	rc = rm->dropAttribute(tableName, "Salary");
+	assert(rc == SUCC);
+	prepareTuple_AfterDropSalary(5, "Mancy", 22, 169.6, 3, "Man", 3, 2.1, tuple[10], &(tupleSize[10]));
+	prepareTuple_AfterDropSalary(4, "Mike", 29, 179.6, 2, "Mk", 4, 5.1, tuple[6], &(tupleSize[6]));
+	cout << "add one entry" << endl;
+	rc = rm->insertTuple(tableName, tuple[10], rid[10]);
+	assert(rc == success);
+	cout << "read the entry" << endl;
+	rc = rm->readTuple(tableName, rid[10], returnedTuple[10]);
+	assert(rc == success);
+	cout << "compare the entries" << endl;
+	assert(memcmp(tuple[10], returnedTuple[10], tupleSize[10]) == 0);
+	cout << "update entry" << endl;
+	rc = rm->updateTuple(tableName, tuple[6], rid[6]);
+	assert(rc == success);
+	cout << "read entry" << endl;
+	rc = rm->readTuple(tableName, rid[6], returnedTuple[6]);
+	assert(rc == success);
+	cout << "compare the entries" << endl;
+	cout << tupleSize[6] << endl;
+	assert(memcmp(tuple[6], returnedTuple[6], tupleSize[6]) == 0);
+
+	cout << "drop attribute" << endl;
+	rc = rm->dropAttribute(tableName, "Alias");
+	assert(rc == SUCC);
+	rc = rm->deleteTuple(tableName, rid[4]);
+	assert(rc == SUCC);
+
+	vector<int> index;
+	index.push_back(0);
+	index.push_back(5);
+	index.push_back(6);
+	index.push_back(7);
+	index.push_back(8);
+	index.push_back(9);
+	index.push_back(10);
+	// begin raed tuple
+	printTuples(tableName, rm, index);
+	cout << "test dropAttribute finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
+void testRM_scan(const string &tableName) {
+	//bookmark
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+	cout << "test scan starts!" << endl;
+
+	RM_ScanIterator rmsi;
+	int age = 26;
+	vector<string>attrNames;
+	attrNames.push_back("EmpName");
+	attrNames.push_back("Height");
+	attrNames.push_back("Assess");
+	attrNames.push_back("Age");
+	// initialize scan
+	cout << "initialize scan" << endl;
+	rc = rm->scan(tableName, "Age", LT_OP, &age, attrNames, rmsi);
+	assert(rc == success);
+
+	RID scanRID;
+	char data[PAGE_SIZE];
+	char *result = data;
+	cout << "begin get next" << endl;
+	while(rmsi.getNextTuple(scanRID, data) != RM_EOF) {
+		result = data;
+		int strLen(0);
+		char empName[PAGE_SIZE];
+		strLen = *((int *)result);
+		result += sizeof(int);
+		memcpy(empName, result, strLen+1);
+		result += strLen;
+		empName[strLen] = '\0';
+		cerr << "EmpName: " << empName << "\t";
+
+		float height(0.0);
+		memcpy(&height, result, sizeof(float));
+		result += sizeof(float);
+		cerr << "Height: " << height << "\t";
+
+		float access(0.0);
+		memcpy(&access, result, sizeof(float));
+		result += sizeof(float);
+		cerr << "Access: " << access << "\t";
+
+		int age_(0);
+		memcpy(&age_, result, sizeof(int));
+		result += sizeof(int);
+		cerr << "Age: " << age_ << "\t" << endl;
+	}
+
+	cout << "test scan finishes!" << endl;
+	cout << "===============================================" << endl;
+}
+
 void testRM_(const string &tableName) {
 	//bookmark
 	RelationManager *rm = RelationManager::instance();
@@ -582,8 +860,8 @@ int main()
   cout << "test..." << endl;
 
   rmTest();
-  testRBFM_2();
-  testRBFM_1();
+  //testRBFM_2();
+  //testRBFM_1();
   // other tests go here
   // test the newly added rbfm features
   vector<Attribute> attrs;
@@ -595,7 +873,11 @@ int main()
   testRM_getAttribute(tableName);
   testRM_insertTuple_readTuple(tableName);
   testRM_InsertMultipleTuples(tableName);
-  testRM_DeleteUpdateInsertTuple(tableName);
+  testRM_DeleteUpdateInsertTuple(tableName); 	// only 1,5,6 kept
+  testRM_insert_readAttribute(tableName); 	// insert 7,8,9,10
+  testRM_addAttribute(tableName);
+  testRM_dropAttribute(tableName);
+  testRM_scan(tableName);
   testRM_deleteTable(tableName);
   memProfile();
   cout << "O.K." << endl;

@@ -408,16 +408,27 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 	// read the record
 	char *record = ((char *)pageContent) + slotDir.recordOffset;
 
+	// get the current record's version
+	VersionNumber curVer = *((VersionNumber *)record);
+	// see if the attribute exists in current version
+	VersionManager *vm = VersionManager::instance();
+	vector<Attribute> currentRD;
+	rc = vm->getAttributes(fileHandle.fileName, currentRD, curVer);
+	if (rc != SUCC) {
+		cerr << "readAttribute: get attribute error " << rc << endl;
+		return rc;
+	}
+
 	int offset = 0;	// offset to the attribute
 	int lenAttr = 0; // attribute length
 	int index = 0;
 	// go through the record descriptor until find the attribute name
-	for (; index < recordDescriptor.size(); ++index) {
-		if (attributeName == recordDescriptor[index].name) {
+	for (; index < currentRD.size(); ++index) {
+		if (attributeName == currentRD[index].name) {
 			// locate the attribute
 			break;
 		} else {
-			switch(recordDescriptor[index].type) {
+			switch(currentRD[index].type) {
 			case TypeInt:
 				offset += sizeof(int);
 				break;
@@ -432,7 +443,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 		}
 	}
 
-	if (index == recordDescriptor.size()) {
+	if (index == currentRD.size()) {
 		// no such attribute found
 		// return a default value
 		// the default value for Varchar is (int)0NULL
@@ -443,7 +454,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 	} else {
 		// got the attribute hit
 		// read length of data
-		switch(recordDescriptor[index].type) {
+		switch(currentRD[index].type) {
 		case TypeInt:
 			lenAttr = sizeof(int);
 			break;
@@ -458,7 +469,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 		memcpy(data, record+offset, lenAttr);
 	}
 
-	return rc;
+	return SUCC;
 }
 
 RC RecordBasedFileManager::reorganizePage(FileHandle &fileHandle,
@@ -566,6 +577,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 		}
 	}
 	if (!hitFlag || hitTimes != attributeNames.size()) {
+		cerr << hitFlag << "\t" << "projected number " << hitTimes << endl;
 		cerr << "scan: cannot find the condition attribute" << endl;
 		return SCANITER_COND_PROJ_NOT_FOUND;
 	}
@@ -672,6 +684,17 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			RID rid;
 			rid.pageNum = pageNum;
 			rid.slotNum = slotNum;
+
+			//  see if the data is deleted or forwarded by checking its directory
+			SlotDir slotDir;
+			rc = rbfm->getSlotDir(page, slotDir, slotNum);
+			if (rc != SUCC) {
+				cerr << "RBFM_ScanIterator::getNextRecord: get slot directory error " << rc << endl;
+				return rc;
+			}
+			if (slotDir.recordLength == RECORD_DEL || slotDir.recordLength == RECORD_FORWARD)
+				continue;
+
 			rc = rbfm->readRecord(fileHandle, attrs, rid, tuple);
 			if (rc != SUCC) {
 				cerr << "RBFM_ScanIterator::getNextRecord: read record error " << rc << endl;
@@ -694,7 +717,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			}
 			// the value meets the requirement, prepare output data
 			if (compareValue(attrData, conditionType)) {
-				rc = prepareData(fileHandle, attrs, rid, attrData);
+				rc = prepareData(fileHandle, attrs, rid, data);
 				if (rc != SUCC) {
 					cerr << "RBFM_ScanIterator::getNextRecord: prepare data error " << rc << endl;
 					return rc;
@@ -789,6 +812,7 @@ bool RBFM_ScanIterator::compareValue(const void *record, const AttrType &type) {
 		return compareValueTemplate(lhs_str, rhs_str);
 		break;
 	}
+	return false;
 }
 RC RBFM_ScanIterator::close() {
 	if (value != NULL)

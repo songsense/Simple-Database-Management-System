@@ -4,10 +4,13 @@
 RelationManager* RelationManager::_rm = 0;
 
 RC RM_ScanIterator::getNextTuple(RID &rid, void *data) {
-	return RM_EOF;
+	if (rbfm_si.getNextRecord(rid, data) == RBFM_EOF)
+		return RM_EOF;
+	else
+		return SUCC;
 }
 RC RM_ScanIterator::close() {
-	return -1;
+	return rbfm_si.close();
 }
 
 RelationManager* RelationManager::instance()
@@ -98,11 +101,12 @@ RC RelationManager::deleteTable(const string &tableName)
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
 	VersionManager *vm = VersionManager::instance();
-	VersionNumber curVer;
+	VersionNumber curVer(0);
 	RC rc;
 
 	rc = vm->getVersionNumber(tableName, curVer);
 	if (rc != SUCC) {
+		cerr << tableName << ": current version requested: " << curVer << endl;
 		cerr << "getAttribute: get version number error " << rc << endl;
 		return rc;
 	}
@@ -187,7 +191,6 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 		cerr << "insertTuple: insert record " << rc << endl;
 		return rc;
 	}
-
 	// close the file
 	rc = rbfm->closeFile(fileHandle);
 	if (rc != SUCC) {
@@ -453,8 +456,47 @@ RC RelationManager::scan(const string &tableName,
       const vector<string> &attributeNames,
       RM_ScanIterator &rm_ScanIterator)
 {
-    return -1;
-    // TODO
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	VersionManager *vm = VersionManager::instance();
+	RC rc;
+	FileHandle fileHandle;
+
+	// open file handle;
+	rc = rbfm->openFile(tableName, fileHandle);
+	if (rc != SUCC) {
+		cerr << "RelationManager::scan open file error " << rc << endl;
+		return rc;
+	}
+
+	// get attributes and versions
+	vector<Attribute> recordDesriptor;
+	VersionNumber ver;
+	rc = vm->getVersionNumber(tableName, ver);
+	if (rc != SUCC) {
+		cerr << "RelationManager::scan: get version error " << rc << endl;
+		return rc;
+	}
+	rc = vm->getAttributes(tableName, recordDesriptor, ver);
+	if (rc != SUCC) {
+		cerr << "RelationManager::scan: get attributes error " << rc << endl;
+		return rc;
+	}
+
+	rc = rbfm->scan(fileHandle, recordDesriptor,
+			conditionAttribute, compOp, value,
+			attributeNames, rm_ScanIterator.rbfm_si);
+	if (rc != SUCC) {
+		cerr << "RelationManager::scan: scan initialization error " << rc << endl;
+		return rc;
+	}
+
+	rc = rbfm->closeFile(fileHandle);
+	if (rc != SUCC) {
+		cerr << "RelationManager::scan close file error " << rc << endl;
+		return rc;
+	}
+
+	return SUCC;
 }
 
 // Extra credit
