@@ -346,11 +346,15 @@ void secA_7(const string &tableName)
         tuples.push_back((char *)tuple);
         sizes[i] = tupleSize;
         rids[i] = rid;
+        if (i > 0) {
+            // Since we are inserting 5 tiny tuples into an empty table where the page size is 4kb, all the 5 tuples should be on the first page. 
+            assert(rids[i - 1].pageNum == rids[i].pageNum);
+        }
         cout << rid.pageNum << endl;
     }
     cout << "After Insertion!" << endl;
     
-    int pageid = 0; // Depends on which page the tuples are
+    int pageid = rid.pageNum;
     rc = rm->reorganizePage(tableName, pageid);
     assert(rc == success);
 
@@ -403,6 +407,7 @@ void secA_8_A(const string &tableName)
     vector<char *> tuples;
     set<int> ages; 
     RC rc = 0;
+
     for(int i = 0; i < numTuples; i++)
     {
         tuple = malloc(100);
@@ -497,7 +502,7 @@ int main()
 {
     // Basic Functions
     cout << endl << "Test Basic Functions..." << endl;
-    cout << "void * " << sizeof(void *) << endl;
+    remove("tbl_employee3");
     // Create Table
     createTable("tbl_employee");
 

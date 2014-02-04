@@ -286,9 +286,14 @@ unsigned FileHandle::getNumberOfPages()
 
 // Get the free space associated with page num
 // Note that the page must be loaded already
-unsigned FileHandle::getSpaceOfPage(PageNum pageNum, void *page) {
-	unsigned long sp = (unsigned long)(*((unsigned long*)(page) + PAGE_SIZE/sizeof(unsigned long) - 1ul));
-	return PAGE_SIZE - sp;
+unsigned FileHandle::getSpaceOfPage(void *page) {
+	char *beg = (char *)page + PAGE_SIZE - sizeof(unsigned long);
+	unsigned long addr_beg = *((unsigned long *)(beg));
+	int space = PAGE_SIZE - addr_beg;
+	char *p = (char *)page + PAGE_SIZE - sizeof(unsigned long) - sizeof(unsigned short);
+	unsigned short slotNum =  *((unsigned short *)p);
+	space = space - slotNum * sizeof(SlotDir) - sizeof(unsigned short) - sizeof(unsigned long);
+	return space;
 }
 
 // File Space manager
@@ -300,10 +305,9 @@ FileSpaceManager::FileSpaceManager(FileHandle &fileHandle) {
 		char page[PAGE_SIZE];
 		fileHandle.readPage(i, page);
 		//get free space for that page
-		unsigned space = fileHandle.getSpaceOfPage(i, page);
+		unsigned space = fileHandle.getSpaceOfPage(page);
 		//write free space information
-		PageSpaceInfo psInfo(space, i);
-		pageQueue.push(psInfo);
+		pageQueue.insert(pair<unsigned, PageNum>(MAX_FREE_SPACE_SIZE-space, i));
 	}
 }
 
@@ -318,12 +322,12 @@ RC FileSpaceManager::getPageSpaceInfo(const unsigned &recordSize,
 		return FILE_SPACE_EMPTY;
 	
 	//check whether if there is enough free space
-	PageSpaceInfo pageSpaceInfo = pageQueue.top();
-	if (pageSpaceInfo.freeSpaceSize < recordSize) {
+	unsigned freeSpaceSize = MAX_FREE_SPACE_SIZE - pageQueue.begin()->first;
+	if (freeSpaceSize < recordSize) {
 		// the free space of the page is less than the record to be inserted
 		return FILE_SPACE_NO_SPACE;
 	}
-	pageNum = pageSpaceInfo.pageNum;
+	pageNum = pageQueue.begin()->second;
 	if (pageNum < TABLE_PAGES_NUM)
 		return FILE_SPACE_NO_SPACE;
 	return SUCC;
@@ -332,7 +336,7 @@ RC FileSpaceManager::getPageSpaceInfo(const unsigned &recordSize,
 RC FileSpaceManager::popPageSpaceInfo() {
 	if (pageQueue.empty())
 		return FILE_SPACE_EMPTY;
-	pageQueue.pop();
+	pageQueue.erase(pageQueue.begin());
 	return SUCC;
 }
 // Push the page space info
@@ -340,15 +344,12 @@ RC FileSpaceManager::pushPageSpaceInfo(const unsigned &freeSpaceSize,
 		const unsigned &pageNum) {
 	if (pageNum < TABLE_PAGES_NUM) // return because it's not a user page
 		return SUCC;
-	PageSpaceInfo sp(freeSpaceSize, pageNum);
-	pageQueue.push(sp);
+	pageQueue.insert(pair<unsigned, PageNum>(MAX_FREE_SPACE_SIZE-freeSpaceSize, pageNum));
 	return SUCC;
 }
 // Clear all the page space info
 void FileSpaceManager::clearPageSpaceInfo() {
-	while(!pageQueue.empty()) {
-		pageQueue.pop();
-	}
+	pageQueue.clear();
 }
 
 

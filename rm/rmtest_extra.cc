@@ -801,7 +801,14 @@ void testRM_scan(const string &tableName) {
 	cout << "test scan starts!" << endl;
 
 	RM_ScanIterator rmsi;
-	int age = 26;
+	string name("Mike");
+	char name_str[PAGE_SIZE];
+	char *pname_str = name_str;
+	int len = name.length();
+	memcpy(pname_str, &len,sizeof(int));
+	pname_str += sizeof(int);
+	memcpy(pname_str, name.c_str(), name.length());
+
 	vector<string>attrNames;
 	attrNames.push_back("EmpName");
 	attrNames.push_back("Height");
@@ -809,13 +816,13 @@ void testRM_scan(const string &tableName) {
 	attrNames.push_back("Age");
 	// initialize scan
 	cout << "initialize scan" << endl;
-	rc = rm->scan(tableName, "Age", LT_OP, &age, attrNames, rmsi);
+	rc = rm->scan(tableName, "EmpName", NO_OP, name_str, attrNames, rmsi);
 	assert(rc == success);
 
 	RID scanRID;
 	char data[PAGE_SIZE];
 	char *result = data;
-	cout << "begin get next" << endl;
+	cout << "begin get next record" << endl;
 	while(rmsi.getNextTuple(scanRID, data) != RM_EOF) {
 		result = data;
 		int strLen(0);

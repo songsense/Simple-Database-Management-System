@@ -11,7 +11,7 @@ RecordBasedFileManager* RecordBasedFileManager::instance()
 {
     if(!_rbf_manager)
         _rbf_manager = new RecordBasedFileManager();
-    VersionManager::instance();
+
     return _rbf_manager;
 }
 
@@ -69,19 +69,22 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		}
 		// obtain the newly allocated page's num
 		pageNum = fileHandle.getNumberOfPages()-1;
-		// push the page into the queue
-		unsigned freeSpaceSize = getFreeSpaceSize(pageContent);
-		itr->second.pushPageSpaceInfo(freeSpaceSize, pageNum);
+	} else {
+		itr->second.popPageSpaceInfo();
 	}
-	// TODO Test
-	// if (pageNum < TABLE_PAGES_NUM)
-	//	exit(01);
+
 	// load the page data
 	rc = fileHandle.readPage(pageNum, pageContent);
 	if (rc != SUCC) {
 		cerr << "Insert record: Read page " << rc << endl;
 		return rc;
 	}
+
+	// available space
+	unsigned spaceSize = getFreeSpaceSize(pageContent);
+	if (spaceSize < recordDirectorySize)
+		cerr << "not enough space " << spaceSize << "\t" << recordDirectorySize << endl;
+
 
 	// get the start point to write with
 	char *startPoint = (char*)(getFreeSpaceStartPoint(pageContent));
@@ -103,6 +106,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		cerr << "Insert record: fail to set number of slots " << rc << endl;
 		return rc;
 	}
+
 	// update the directory of the slot
 	SlotDir slotDir;
 	slotDir.recordLength = recordSize;
@@ -123,8 +127,8 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 
 	// update the priority queue
 	unsigned freeSpaceSize = getFreeSpaceSize(pageContent);
-	itr->second.popPageSpaceInfo();
 	itr->second.pushPageSpaceInfo(freeSpaceSize, pageNum);
+
 	// update the record id
 	rid.pageNum = pageNum;
 	rid.slotNum = nextAvailableSlot;
@@ -407,9 +411,9 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 
 	// read the record
 	char *record = ((char *)pageContent) + slotDir.recordOffset;
-
 	// get the current record's version
 	VersionNumber curVer = *((VersionNumber *)record);
+
 	// see if the attribute exists in current version
 	VersionManager *vm = VersionManager::instance();
 	vector<Attribute> currentRD;
@@ -576,7 +580,8 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 			++hitTimes;
 		}
 	}
-	if (!hitFlag || hitTimes != attributeNames.size()) {
+	if ((value != NULL && !conditionAttribute.empty() ) &&
+			(!hitFlag || hitTimes != attributeNames.size())) {
 		cerr << hitFlag << "\t" << "projected number " << hitTimes << endl;
 		cerr << "scan: cannot find the condition attribute" << endl;
 		return SCANITER_COND_PROJ_NOT_FOUND;
@@ -716,14 +721,20 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 				return rc;
 			}
 			// the value meets the requirement, prepare output data
-			if (compareValue(attrData, conditionType)) {
+			if (value == NULL || conditionName.empty() ||
+					compareValue(attrData, conditionType)) {
 				rc = prepareData(fileHandle, attrs, rid, data);
 				if (rc != SUCC) {
 					cerr << "RBFM_ScanIterator::getNextRecord: prepare data error " << rc << endl;
 					return rc;
 				}
+
 				// save the current RID
-				curRid.pageNum = rid.pageNum, curRid.slotNum = rid.slotNum;
+				if (totalSlotNum == rid.slotNum){
+					curRid.pageNum = rid.pageNum+1, curRid.slotNum = 0;
+				} else {
+					curRid.pageNum = rid.pageNum, curRid.slotNum = rid.slotNum;
+				}
 				// exit
 				rc = rbfm->closeFile(fileHandle);
 				if (rc != SUCC) {
@@ -1088,14 +1099,40 @@ RC VersionManager::initTableVersionInfo(const string &tableName,
 	attrMap[tableName] = recordDescriptorArray;
 	return SUCC;
 }
+
+RC VersionManager::loadTable(const string &tableName) {
+	FileHandle fileHandle;
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	RC rc;
+	rc = rbfm->openFile(tableName, fileHandle);
+	if (rc != SUCC) {
+		cerr << "RelationManager::createTable: load file error " << rc << endl;
+		return rc;
+	}
+	rc = initTableVersionInfo(tableName,fileHandle);
+	if (rc != SUCC) {
+		cerr << "RelationManager::createTable: load file error " << rc << endl;
+		return rc;
+	}
+	rc = rbfm->closeFile(fileHandle);
+	if (rc != SUCC) {
+		cerr << "RelationManager::createTable: load file error " << rc << endl;
+		return rc;
+	}
+	return SUCC;
+}
+
 // get version number publicly
 RC VersionManager::getVersionNumber(const string &tableName,
 		VersionNumber &ver) {
 	VersionMap::iterator itr = versionMap.find(tableName);
 	if(itr == versionMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
+		if (loadTable(tableName) != SUCC)
+			return VERSION_TABLE_NOT_FOUND;
+		else {
+			itr = versionMap.find(tableName);
+		}
 	}
-
 	ver = itr->second;
 
 	return SUCC;
@@ -1106,12 +1143,13 @@ RC VersionManager::getVersionNumber(const string &tableName,
 RC VersionManager::getAttributes(const string &tableName, vector<Attribute> &attrs,
 		const VersionNumber ver) {
 	AttrMap::iterator itr = attrMap.find(tableName);
+
 	if (itr == attrMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
-	}
-	VersionMap::iterator itr_1 = versionMap.find(tableName);
-	if (itr_1 == versionMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
+		if (loadTable(tableName) != SUCC)
+			return VERSION_TABLE_NOT_FOUND;
+		else {
+			itr = attrMap.find(tableName);
+		}
 	}
 
 	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
@@ -1123,13 +1161,17 @@ RC VersionManager::getAttributes(const string &tableName, vector<Attribute> &att
 RC VersionManager::addAttribute(const string &tableName,
 		const Attribute &attr, FileHandle &fileHandle) {
 	AttrMap::iterator itr = attrMap.find(tableName);
-	if (itr == attrMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
-	}
 	VersionMap::iterator itr_1 = versionMap.find(tableName);
-	if (itr_1 == versionMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
+	if (itr == attrMap.end() ||
+			itr_1 == versionMap.end()) {
+		if (loadTable(tableName) != SUCC)
+			return VERSION_TABLE_NOT_FOUND;
+		else {
+			itr = attrMap.find(tableName);
+			itr_1 = versionMap.find(tableName);
+		}
 	}
+
 	// get version info to read and write
 	VersionNumber &currentVersion = itr_1->second;
 	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
@@ -1181,13 +1223,17 @@ RC VersionManager::addAttribute(const string &tableName,
 RC VersionManager::dropAttribute(const string &tableName,
 		const string &attributeName, FileHandle &fileHandle) {
 	AttrMap::iterator itr = attrMap.find(tableName);
-	if (itr == attrMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
-	}
 	VersionMap::iterator itr_1 = versionMap.find(tableName);
-	if (itr_1 == versionMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
+	if (itr == attrMap.end() ||
+			itr_1 == versionMap.end()) {
+		if (loadTable(tableName) != SUCC)
+			return VERSION_TABLE_NOT_FOUND;
+		else {
+			itr = attrMap.find(tableName);
+			itr_1 = versionMap.find(tableName);
+		}
 	}
+
 	// get version info to read and write
 	VersionNumber &currentVersion = itr_1->second;
 	vector<RecordDescriptor> &recordDescriptorArray = itr->second;
@@ -1252,12 +1298,15 @@ RC VersionManager::translateData2LastedVersion(const string &tableName,
 		const VersionNumber &currentVersion,
 		const void *oldData, void *latestData) {
 	AttrMap::iterator itrAttr = attrMap.find(tableName);
-	if (itrAttr == attrMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
-	}
 	VersionMap::iterator itrVer = versionMap.find(tableName);
-	if (itrVer == versionMap.end()) {
-		return VERSION_TABLE_NOT_FOUND;
+	if (itrAttr == attrMap.end() ||
+			itrVer == versionMap.end()) {
+		if (loadTable(tableName) != SUCC)
+			return VERSION_TABLE_NOT_FOUND;
+		else {
+			itrAttr = attrMap.find(tableName);
+			itrVer = versionMap.find(tableName);
+		}
 	}
 
 	if (currentVersion > itrVer->second) {

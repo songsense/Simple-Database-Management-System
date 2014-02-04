@@ -17,7 +17,7 @@ RelationManager* RelationManager::instance()
 {
     if(!_rm)
         _rm = new RelationManager();
-
+    VersionManager::instance();
     return _rm;
 }
 
@@ -41,8 +41,10 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	RC rc;
 	// create the file
 	rc = rbfm->createFile(tableName);
-	if (rc != SUCC)
+	if (rc != SUCC) {
+		cerr << "RelationManager::createTable: error create file " << rc << endl;
 		return rc;
+	}
 
 	// open the file
 	FileHandle fileHandle;

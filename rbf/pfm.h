@@ -5,8 +5,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
-#include <list>
-#include <queue>
+#include <map>
 #include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
@@ -42,6 +41,12 @@ typedef unsigned PageNum;
 // define pages for table data
 #define TABLE_PAGES_NUM 2
 
+typedef unsigned long FieldAddress; 		// for address
+// slot directory: saved in pages
+typedef struct {
+	FieldAddress recordOffset;
+	unsigned recordLength;
+} SlotDir;
 
 class FileHandle;
 
@@ -64,34 +69,12 @@ struct FileInfo {
 /*
  * Heap file management
  */
-struct PageSpaceInfo {
-	unsigned short freeSpaceSize;
-	unsigned pageNum;
-	PageSpaceInfo & operator=(const PageSpaceInfo &p) {
-		if (&p == this)
-			return *this;
-		this->freeSpaceSize = p.freeSpaceSize;
-		this->pageNum = p.pageNum;
-		return *this;
-	}
-	PageSpaceInfo(const PageSpaceInfo &p) : freeSpaceSize(p.freeSpaceSize),
-			pageNum(p.pageNum) {}
-	PageSpaceInfo(unsigned f, unsigned p) : freeSpaceSize(f), pageNum(p) {}
-private:
-	PageSpaceInfo();
-};
-
-class spaceComparator {
-public:
-	bool operator() (const PageSpaceInfo &lhs, const PageSpaceInfo &rhs) {
-		return lhs.freeSpaceSize < rhs.freeSpaceSize;
-	}
-};
-
+const unsigned short MAX_FREE_SPACE_SIZE = PAGE_SIZE+1;
 class FileSpaceManager {
 private:
 	FileSpaceManager();
-	priority_queue<PageSpaceInfo, vector<PageSpaceInfo>, spaceComparator> pageQueue;
+	// priority_queue<PageSpaceInfo, vector<PageSpaceInfo>, spaceComparator> pageQueue;
+	map<unsigned, PageNum> pageQueue;
 public:
 	FileSpaceManager(FileHandle &fileHandle);
 	// Get the page number with the greatest free space size
@@ -100,6 +83,8 @@ public:
 	RC popPageSpaceInfo();
 	// Push the page space info
 	RC pushPageSpaceInfo(const unsigned &freeSpaceSize, const unsigned &pageNum);
+	unsigned getPageSpaceQueueSize() { return pageQueue.size();}
+	unsigned getTopPageSpaceInfo() { return pageQueue.empty() ? 0 : MAX_FREE_SPACE_SIZE-pageQueue.begin()->first; }
 	// Clear all the page space info
 	void clearPageSpaceInfo();
 };
@@ -107,6 +92,7 @@ typedef unordered_map<string, FileSpaceManager> MultipleFilesSpaceManager;
 /*
  * Paged File Manager
  */
+#define __DEBUG__
 class PagedFileManager
 {
 public:
@@ -159,7 +145,7 @@ public:
 
     FILE * pFile;
     string fileName;													// file name of the handler
-    unsigned getSpaceOfPage(PageNum pageNum, void *page);			// Get the free space associated with page num
+    unsigned getSpaceOfPage(void *page);			// Get the free space associated with page num
 private:
     FileHandle & operator=(const FileHandle &);			// prevent accidentally copy class
     FileHandle(const FileHandle &);						// prevent copy constructor

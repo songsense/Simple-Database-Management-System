@@ -11,7 +11,6 @@
 using namespace std;
 
 // define a bunch of types
-typedef unsigned long FieldAddress; 		// for address
 typedef unsigned short FieldOffset;
 typedef unsigned short SlotNum;
 
@@ -28,12 +27,6 @@ typedef struct
   unsigned slotNum;
 } RID;
 
-
-// slot directory: saved in pages
-typedef struct {
-	FieldAddress recordOffset;
-	unsigned recordLength;
-} SlotDir;
 
 // define delete/update mode
 // NOTE here, we use the C++ grammar for we need operate memory
@@ -180,6 +173,8 @@ private:
 	static VersionManager *_ver_manager;
 public:
 	VersionManager();
+	// load the catelog of a table
+	RC loadTable(const string &tableName);
 	// open up a Table
 	RC initTableVersionInfo(const string &tableName, FileHandle &fileHandle);
 	// get version number publicly
