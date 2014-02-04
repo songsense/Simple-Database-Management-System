@@ -427,7 +427,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 	int lenAttr = 0; // attribute length
 	int index = 0;
 	// go through the record descriptor until find the attribute name
-	for (; index < currentRD.size(); ++index) {
+	for (; index < int(currentRD.size()); ++index) {
 		if (attributeName == currentRD[index].name) {
 			// locate the attribute
 			break;
@@ -447,7 +447,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 		}
 	}
 
-	if (index == currentRD.size()) {
+	if (index == int(currentRD.size())) {
 		// no such attribute found
 		// return a default value
 		// the default value for Varchar is (int)0NULL
@@ -560,7 +560,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 	vector<AttrType> projectedType(attributeNames.size());
 
 	unordered_map<string, int> projAttrMap;
-	for (int i = 0; i < attributeNames.size(); ++i) {
+	for (int i = 0; i < int(attributeNames.size()); ++i) {
 		projAttrMap[attributeNames[i]] = i;
 	}
 
@@ -569,7 +569,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 	bool hitFlag = false;
 	int hitTimes = 0;
 	unordered_map<string, int>::iterator itr;
-	for (int i = 0; i < recordDescriptor.size(); ++i) {
+	for (int i = 0; i < int(recordDescriptor.size()); ++i) {
 		if(recordDescriptor[i].name == conditionAttribute) {
 			conditionAttrType = recordDescriptor[i].type;
 			hitFlag = true;
@@ -581,7 +581,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 		}
 	}
 	if ((value != NULL && !conditionAttribute.empty() ) &&
-			(!hitFlag || hitTimes != attributeNames.size())) {
+			(!hitFlag || hitTimes != int(attributeNames.size()))) {
 		cerr << hitFlag << "\t" << "projected number " << hitTimes << endl;
 		cerr << "scan: cannot find the condition attribute" << endl;
 		return SCANITER_COND_PROJ_NOT_FOUND;
@@ -765,7 +765,7 @@ RC RBFM_ScanIterator::prepareData(FileHandle &fileHandle,
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	RC rc;
 
-	for (int i = 0; i < projectedName.size(); ++i) {
+	for (int i = 0; i < int(projectedName.size()); ++i) {
 		// get the condition value
 		rc = rbfm->readAttribute(fileHandle, recordDescriptor,
 				rid, projectedName[i], returnedData);
@@ -841,7 +841,7 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     unsigned numFields = recordDescriptor.size();
     cout << "==============================================" << endl;
     cout << "Attribute\t\t\tAttribute Type\t\t\tAttribute Length\t\t\tValue" << endl;
-    for (int i = 0; i < numFields; ++i) {
+    for (int i = 0; i < int(numFields); ++i) {
     	string type;
     	stringstream ss;
     	int length;
@@ -887,7 +887,7 @@ unsigned RecordBasedFileManager::getRecordSize(
 
 	unsigned numFields = rD.size();
 
-	for (int i = 0; i < numFields; ++i) {
+	for (int i = 0; i < int(numFields); ++i) {
 		switch(rD[i].type) {
 		case TypeInt:
 			recordSize += sizeof(int);
@@ -920,7 +920,7 @@ unsigned RecordBasedFileManager::getRecordDirectorySize(const vector<Attribute> 
 		unsigned &recordSize){
 	unsigned len(0);
 	recordSize = 0;
-	for (int i = 0; i < recordDescriptor.size(); ++i) {
+	for (int i = 0; i < int(recordDescriptor.size()); ++i) {
 		recordSize += recordDescriptor[i].length;
 		len += recordDescriptor[i].length + sizeof(FieldOffset); // add one more offset
 	}
@@ -1249,12 +1249,12 @@ RC VersionManager::dropAttribute(const string &tableName,
 	// format VersionInfo Frame
 	int deleteIndex = 0;
 	vector<Attribute>::iterator deleteItr = recordDescriptor.begin();
-	for (int deleteIndex = 0; deleteIndex < recordDescriptor.size(); ++deleteIndex) {
+	for (int deleteIndex = 0; deleteIndex < int(recordDescriptor.size()); ++deleteIndex) {
 		if (recordDescriptor[deleteIndex].name == attributeName)
 			break;
 		++deleteItr;
 	}
-	if (deleteIndex == recordDescriptor.size())
+	if (deleteIndex == int(recordDescriptor.size()))
 		return ATTR_NOT_FOUND;
 
 	// set the frame
@@ -1356,7 +1356,7 @@ RC VersionManager::translateData2LastedVersion(const string &tableName,
 	// if it is 'r', original real; if it is 'i', original int; if it is 'v', original varchar;
 	// if it is 'R', delete real; if it is 'I', delete int; if it is 'V', delete varchar;
 	vector<int> historyChangeLog(oldAttrs.size() + latestAttrs.size(), 'n');
-	for (int i = 0; i < oldAttrs.size(); ++i) {
+	for (int i = 0; i < int(oldAttrs.size()); ++i) {
 		switch(oldAttrs[i].type) {
 		case TypeInt:
 			historyChangeLog[i] = 'i';
@@ -1369,7 +1369,7 @@ RC VersionManager::translateData2LastedVersion(const string &tableName,
 			break;
 		}
 	}
-	for (char ver = currentVersion; ver < itrVer->second; ++ver) {
+	for (VersionNumber ver = currentVersion; ver < itrVer->second; ++ver) {
 		// get the change log of the version
 		get_ithVersionInfo(page, ver, verInfoFrame);
 		if (verInfoFrame.verChangeAction == ADD_ATTRIBUTE) {
@@ -1397,7 +1397,7 @@ RC VersionManager::translateData2LastedVersion(const string &tableName,
 	char *src = (char *)oldData;
 	int defaultVal = 0;
 	int len = 0;
-	for (int i = 0; i < historyChangeLog.size(); ++i) {
+	for (int i = 0; i < int(historyChangeLog.size()); ++i) {
 		if (historyChangeLog[i] == 'n') // reach the end quit
 			break;
 		switch(historyChangeLog[i]) {
@@ -1469,8 +1469,8 @@ void VersionManager::printAttributes(const string &tableName) {
 	VersionNumber ver = versionMap[tableName];
 	cout << "=================================================" << endl;
 	cout << "No.\tAttribute Name\tAttribute Length\tAttribute Type" << endl;
-	for (int i = 0; i < recordDescriptorArray.size(); ++i) {
-		for (int j = 0; j < recordDescriptorArray[i].size(); ++j) {
+	for (int i = 0; i < int(recordDescriptorArray.size()); ++i) {
+		for (int j = 0; j < int(recordDescriptorArray[i].size()); ++j) {
 			cout << j <<"\t" <<
 					recordDescriptorArray[i][j].name << "\t" <<
 					recordDescriptorArray[i][j].length << "\t" <<
@@ -1569,14 +1569,14 @@ RC VersionManager::formatFirst2Page(const string &tableName,
 	rc = fileHandle.writePage(0, page);
 	if (rc != SUCC) {
 		cerr << "formatFirst2Page: cannto write the page" << rc << endl;
-		return cerr;
+		return rc;
 	}
 
 	// insert attribute data to the pages
 	rc = resetAttributePages(attrs, fileHandle);
 	if (rc != SUCC) {
 		cerr << "formatFirst2Page: resetAttributePages" << rc << endl;
-		return cerr;
+		return rc;
 	}
 
 	return SUCC;
@@ -1590,14 +1590,14 @@ RC VersionManager::resetAttributePages(const vector<Attribute> &attrs,
 	rc = fileHandle.readPage(1, page);
 	if (rc != SUCC) {
 		cerr << "resetAttributePages: read page error" << rc << endl;
-		return cerr;
+		return rc;
 	}
 	// set the number of attributes
 	setNumberAttributes(page, attrs.size());
 
 	// insert data to the file
 	VersionInfoFrame verInfoFrame;
-	for (int i = 0; i < attrs.size(); ++i) {
+	for (int i = 0; i < int(attrs.size()); ++i) {
 		// set the info frame
 		verInfoFrame.attrLength = attrs[i].length;
 		verInfoFrame.attrType = attrs[i].type;
@@ -1614,7 +1614,7 @@ RC VersionManager::resetAttributePages(const vector<Attribute> &attrs,
 	rc = fileHandle.writePage(1, page);
 	if (rc != SUCC) {
 		cerr << "resetAttributePages: write page error" << rc << endl;
-		return cerr;
+		return rc;
 	}
 
 	return SUCC;

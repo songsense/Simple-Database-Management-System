@@ -58,7 +58,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	// add an attribute to the front of the att desriptor
 	vector<Attribute> verAttrs;
 	verAttrs.push_back(headVersionAttribute);
-	for (int i = 0; i < attrs.size(); ++i) {
+	for (int i = 0; i < int(attrs.size()); ++i) {
 		verAttrs.push_back(attrs[i]);
 	}
 	rc = vm->formatFirst2Page(tableName, verAttrs, fileHandle);
@@ -588,7 +588,7 @@ unsigned RelationManager::getRecordSize(const void *buf,
 
 	unsigned numFields = rD.size();
 
-	for (int i = 1; i < numFields; ++i) {
+	for (int i = 1; i < int(numFields); ++i) {
 		switch(rD[i].type) {
 		case TypeInt:
 			recordSize += sizeof(int);
