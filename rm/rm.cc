@@ -348,7 +348,8 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 
 	rc = rbfm->readRecord(fileHandle, attrs, rid, tuple);
 	if (rc != SUCC) {
-		cerr << "readTuple: read the record " << rc << endl;
+		if (rc != RC_RECORD_DELETED)
+			cerr << "readTuple: read the record " << rc << endl;
 		return rc;
 	}
 
