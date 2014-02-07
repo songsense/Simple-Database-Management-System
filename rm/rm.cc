@@ -569,8 +569,30 @@ RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 // Extra credit
 RC RelationManager::reorganizeTable(const string &tableName)
 {
-	// TODO
-    return -1;
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	RC rc;
+	FileHandle fileHandle;
+
+	rc = rbfm->openFile(tableName, fileHandle);
+	if (rc != SUCC) {
+		cerr << "reorganizeTable: open file error " << rc << endl;
+		return rc;
+	}
+
+	vector<Attribute> recordDescriptor; // no use in our implementation
+	rc = rbfm->reorganizeFile(fileHandle, recordDescriptor);
+	if (rc != SUCC) {
+		cerr << "reorganizeTable: reorganize file error " << rc << endl;
+		return rc;
+	}
+
+	rc = rbfm->closeFile(fileHandle);
+	if (rc != SUCC) {
+		cerr << "reorganizeTable: close file error " << rc << endl;
+		return rc;
+	}
+
+    return SUCC;
 }
 
 // add the version to data

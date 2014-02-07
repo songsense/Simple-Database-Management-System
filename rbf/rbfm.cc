@@ -148,8 +148,12 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 	// get slot directory
 	SlotDir slotDir;
 	rc = getSlotDir(pageContent, slotDir, rid.slotNum);
+	// cout << "read slot num " << rid.slotNum << endl;
 	if (rc != SUCC) {
 		cerr << "Read record: Reading slot directory error: " << rc << endl;
+		cerr << "While try to read slot num " << rid.slotNum << " at page " << rid.pageNum << endl;
+		SlotNum totalNumSlots = getNumSlots(pageContent);
+		cerr << "The total number of slots is " << totalNumSlots << endl;
 		return rc;
 	}
 
@@ -569,6 +573,7 @@ RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
 				writePagePtr < readPagePtr) {
 			// there is non written page in the buffer and
 			// there is available processed page to write
+			cout << "a page is rewritten " <<  writePagePtr << endl;
 			char *page2Write = buffer.front();
 
 			// add the page size to the space manager
@@ -656,6 +661,9 @@ RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
 		// increase the read page pointer to the next page to process
 		++readPagePtr;
 	}
+
+	// set the rest page to the buffer
+	buffer.push_back(bufferPage);
 
 	// there is non written page in the buffer
 	while (buffer.size() > 0) {
@@ -1431,7 +1439,7 @@ RC VersionManager::dropAttribute(const string &tableName,
 	// format VersionInfo Frame
 	int deleteIndex = 0;
 	vector<Attribute>::iterator deleteItr = recordDescriptor.begin();
-	for (int deleteIndex = 0; deleteIndex < int(recordDescriptor.size()); ++deleteIndex) {
+	for (deleteIndex = 0; deleteIndex < int(recordDescriptor.size()); ++deleteIndex) {
 		if (recordDescriptor[deleteIndex].name == attributeName)
 			break;
 		++deleteItr;
