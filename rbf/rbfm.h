@@ -5,6 +5,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <list>
 
 #include "../rbf/pfm.h"
 
@@ -87,6 +88,7 @@ public:
   RC close();
   // compare the two attribute data
   bool compareValue(const void *record, const AttrType &type);
+  bool compareString(const string &lhs, const string &rhs);
   template <typename T>
   bool compareValueTemplate(T const &lhs, T const &rhs) {
 	  switch(compOp) {

@@ -39,6 +39,7 @@ RC RecordBasedFileManager::openFile(const string &fileName, FileHandle &fileHand
 RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
     return PagedFileManager::instance()->closeFile(fileHandle);
 }
+
 // Given a record descriptor, insert a record into a given file identifed by the provided handle.
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const void *data, RID &rid) {
@@ -53,6 +54,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 	PagedFileManager * pmfInstance = PagedFileManager::instance();
 	MultipleFilesSpaceManager::iterator itr = pmfInstance->filesSpaceManager.find(fileHandle.fileName);
 	if (itr == pmfInstance->filesSpaceManager.end()) {
+		cerr << "insertRecord: fail to find the space manager " << RECORD_FILE_HANDLE_NOT_FOUND << endl;
 		return RECORD_FILE_HANDLE_NOT_FOUND;
 	}
 	// obtain the page number
@@ -178,7 +180,6 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 RC RecordBasedFileManager::deleteRecords(FileHandle &fileHandle) {
 	PageNum totalPageNum = fileHandle.getNumberOfPages();
 	RC rc;
-	// TODO Test
 	// NOTE: only delete user records in data pages
 	for (PageNum i = TABLE_PAGES_NUM; i < totalPageNum; ++i) {
 		// read the page
@@ -536,8 +537,163 @@ RC RecordBasedFileManager::reorganizePage(FileHandle &fileHandle,
 // reorganize the database
 RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor) {
-	return -1;
-	// TODO
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	RC rc;
+	PagedFileManager * pfm = PagedFileManager::instance();
+	MultipleFilesSpaceManager::iterator itr = pfm->filesSpaceManager.find(fileHandle.fileName);
+	if (itr == pfm->filesSpaceManager.end()) {
+		cerr << "reorganizedFile: fail to find the space manager " << RECORD_FILE_HANDLE_NOT_FOUND << endl;
+		return RECORD_FILE_HANDLE_NOT_FOUND;
+	}
+	itr->second.clearPageSpaceInfo();
+
+	// create buffer in a list
+	list<char *> buffer;
+	// read ptr is always ahead of write ptr
+	PageNum readPagePtr(TABLE_PAGES_NUM), writePagePtr(TABLE_PAGES_NUM);
+	// get the total number of pages
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+
+	// current operating page
+	char *bufferPage = new char[PAGE_SIZE];
+	// set page free space to the head of the page
+	rbfm->setPageEmpty(bufferPage);
+	// set the bufferOffset of the buffer page
+	unsigned bufferOffset(0);
+
+	char curReadPage[PAGE_SIZE];
+
+	// read ptr from first to end
+	while (readPagePtr < totalPageNum) {
+		while (buffer.size() > 0 &&
+				writePagePtr < readPagePtr) {
+			// there is non written page in the buffer and
+			// there is available processed page to write
+			char *page2Write = buffer.front();
+
+			// add the page size to the space manager
+			unsigned space = rbfm->getFreeSpaceSize(page2Write);
+			itr->second.pushPageSpaceInfo(space, writePagePtr);
+
+			rc = fileHandle.writePage(writePagePtr, page2Write);
+			if (rc != SUCC) {
+				cerr << "RecordBasedFileManager::reorganizeFile: write page error " << rc << endl;
+				return rc;
+			}
+			// pop the page from the buffer
+			buffer.pop_front();
+			// free the page
+			delete []page2Write;
+			// inc the write page pointer
+			++writePagePtr;
+		} //while (buffer.size() > 0 && writePagePtr < readPagePtr)
+
+		// load next page to read in
+		rc = fileHandle.readPage(readPagePtr, curReadPage);
+		if (rc != SUCC) {
+			cerr << "RecordBasedFileManager::reorganizeFile: read page error " << rc << endl;
+			return rc;
+		}
+
+		// get the number of slots
+		SlotNum totalSlotNum = rbfm->getNumSlots(curReadPage);
+		// the offset starts from 0
+		FieldAddress curOffset(0);
+
+		// from first to last slot: start from 1
+		for (SlotNum readSlotPtr = 1;
+				readSlotPtr <= totalSlotNum; ++readSlotPtr) {
+			// get the slot directory
+			SlotDir slotDir;
+			rc = rbfm->getSlotDir(curReadPage, slotDir, readSlotPtr);
+			if (rc != SUCC) {
+				cerr << "RecordBasedFileManager::reorganizeFile: get slot dir error " << rc << endl;
+				return rc;
+			}
+			if (slotDir.recordLength == RECORD_DEL ||
+					slotDir.recordLength == RECORD_FORWARD) {
+				// it is deleted or forwarded, just ignore
+				continue;
+			}
+			// get the record size
+			unsigned recordSize = slotDir.recordLength;
+			curOffset = slotDir.recordOffset;
+
+			// if not move data to buffer page
+			// first verify the free space available for the buffer page
+			int availableSpace = rbfm->getFreeSpaceSize(bufferPage);
+			if (availableSpace < recordSize) {
+				// new a page for reorganizing
+				buffer.push_back(bufferPage);
+				bufferPage = new char[PAGE_SIZE];
+				rbfm->setPageEmpty(bufferPage);
+				bufferOffset = 0;
+			}
+			// begin move
+			memcpy(bufferPage + bufferOffset,
+					curReadPage + curOffset, recordSize);
+			// save the slot dir for later saving dir
+			slotDir.recordLength = recordSize;
+			slotDir.recordOffset = bufferOffset;
+			// set the free space of the buffer page
+			bufferOffset += recordSize;
+			rbfm->setFreeSpaceStartPoint(bufferPage, bufferPage+bufferOffset);
+			// set the slot number
+			SlotNum inc_slotNum = rbfm->getNumSlots(bufferPage)+1;
+			rc = rbfm->setNumSlots(bufferPage, inc_slotNum);
+			if (rc != SUCC) {
+				cerr << "RecordBasedFileManager::reorganizeFile: set num slot error " << rc << endl;
+				return rc;
+			}
+			// set the slot dir
+			rc = rbfm->setSlotDir(bufferPage, slotDir, inc_slotNum);
+			if (rc != SUCC) {
+				cerr << "RecordBasedFileManager::reorganizeFile: set slot dir error " << rc << endl;
+				return rc;
+			}
+		} // for
+
+		// increase the read page pointer to the next page to process
+		++readPagePtr;
+	}
+
+	// there is non written page in the buffer
+	while (buffer.size() > 0) {
+		char *page2Write = buffer.front();
+
+		// add the page size to the space manager
+		unsigned space = rbfm->getFreeSpaceSize(page2Write);
+		itr->second.pushPageSpaceInfo(space, writePagePtr);
+
+		rc = fileHandle.writePage(writePagePtr, page2Write);
+		if (rc != SUCC) {
+			cerr << "RecordBasedFileManager::reorganizeFile: write page error " << rc << endl;
+			return rc;
+		}
+		// pop the page from the buffer
+		buffer.pop_front();
+		// free the page
+		delete []page2Write;
+		// inc the write page pointer
+		++writePagePtr;
+	} // while (buffer.size() > 0)
+
+	// set the rest page to be empty
+	rbfm->setPageEmpty(curReadPage);
+	unsigned space = rbfm->getFreeSpaceSize(curReadPage);
+	while (writePagePtr < totalPageNum) {
+		// add the page size to the space manager
+		itr->second.pushPageSpaceInfo(space, writePagePtr);
+
+		rc = fileHandle.writePage(writePagePtr, curReadPage);
+		if (rc != SUCC) {
+			cerr << "RecordBasedFileManager::reorganizeFile: write empty page error " << rc << endl;
+			return rc;
+		}
+		++writePagePtr;
+	}
+
+	return SUCC;
 }
 
 // scan returns an iterator to allow the caller to go through the results one by one.
@@ -556,7 +712,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 	VersionManager *vm = VersionManager::instance();
 	vector<Attribute> rd;
 	RC rc;
-	AttrType conditionAttrType;
+	AttrType conditionAttrType(TypeInt);
 	vector<AttrType> projectedType(attributeNames.size());
 
 	unordered_map<string, int> projAttrMap;
@@ -706,7 +862,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 				return rc;
 			}
 			// get the version number of current data
-			VersionNumber curVer = *((int *)tuple);
+			VersionNumber curVer = VersionNumber(*((int *)tuple));
 			// get the current attribute descriptor of  data
 			rc = vm->getAttributes(tableName, attrs, curVer);
 			if (rc != SUCC) {
@@ -825,6 +981,32 @@ bool RBFM_ScanIterator::compareValue(const void *record, const AttrType &type) {
 	}
 	return false;
 }
+
+bool RBFM_ScanIterator::compareString(const string &lhs, const string &rhs) {
+	switch(compOp) {
+	case EQ_OP:
+		return lhs.compare(rhs) == 0;
+		break;
+	case LT_OP:
+		return lhs.compare(rhs) < 0;
+		break;
+	case GT_OP:
+		return lhs.compare(rhs) > 0;
+		break;
+	case LE_OP:
+		return lhs.compare(rhs) <= 0;
+		break;
+	case GE_OP:
+		return lhs.compare(rhs) >= 0;
+		break;
+	case NE_OP:
+		return lhs.compare(rhs) != 0;
+		break;
+	default:
+		return true;
+	}
+	return true;
+}
 RC RBFM_ScanIterator::close() {
 	if (value != NULL)
 		delete []value;
@@ -844,7 +1026,7 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     for (int i = 0; i < int(numFields); ++i) {
     	string type;
     	stringstream ss;
-    	int length;
+    	int length(0);
     	switch (recordDescriptor[i].type) {
     	case TypeInt:
     		type = "Int";
