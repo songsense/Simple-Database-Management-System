@@ -9,6 +9,28 @@
 
 # define IX_EOF (-1)  // end of the index scan
 
+// define return code error
+#define IX_SLOT_DIR_OVERFLOW 60
+#define IX_NOT_ENOUGH_SPACE 61
+
+// define the index slot directory
+typedef unsigned short SlotOffset;
+typedef unsigned short RecordLength;
+struct IndexDir{
+	SlotOffset slotOffset;
+	RecordLength recordLength;
+	PageNum nextPageNum;
+};
+
+// define the free space length
+typedef unsigned short FreeSpaceSize;
+typedef unsigned long Address;
+typedef bool IsLeaf;
+
+// define the begin/end of page
+const PageNum EOF_PAGE_NUM = -1;
+
+
 class IX_ScanIterator;
 
 class IndexManager {
@@ -51,6 +73,45 @@ class IndexManager {
 
  private:
   static IndexManager *_index_manager;
+  // api to handle an index page
+  void setPageEmpty(void *page);
+  void* getFreeSpaceStartPoint(const void *page);
+  FreeSpaceSize getFreeSpaceOffset(const void *page);
+  void setFreeSpaceStartPoint(void *page, const void *point);
+  int getFreeSpaceSize(const void *page);
+  PageNum getPrevPageNum(const void *page);
+  PageNum getNextPageNum(const void *page);
+  void setPrevPageNum(void *page, const PageNum &pageNum);
+  void setNextPageNum(void *page, const PageNum &pageNum);
+  bool isPageLeaf(const void *page);
+  void setPageLeaf(void *page, const bool &isLeaf);
+  SlotNum getSlotNum(const void *page);
+  void setSlotNum(void *page, const SlotNum &slotNum);
+  RC getSlotDir(const void *page,
+		  IndexDir &indexDir,
+		  const SlotNum &slotNum);
+  RC setSlotDir(void *page,
+		  const IndexDir &indexDir,
+		  const SlotNum &slotNum);
+  // get a key's size
+  int getKeySize(const Attribute &attr, const void *key);
+  // binary search an entry
+  RC binarySearchEntry(const void *page,
+		  const Attribute &attr,
+		  const void *key, const unsigned &keyLen,
+		  SlotNum &slotNum);
+  // insert an entry into page at pos n
+  RC insertEntryAtPosLeaf(void *page, const SlotNum &slotNum,
+		  const Attribute &attr,
+		  const void *key, const unsigned &keyLen,
+		  const RID &rid,  const PageNum &nextPageNum);
+  // delete an entry of page at pos n
+  RC deleteEntryAtPosLeaf(void *page, const SlotNum &slotNum);
+  // compare two key
+  // negative: <; positive: >; equal: =;
+  int compareKey(const Attribute &attr,
+		  const void *lhs, const void *rhs);
+  char Entry[PAGE_SIZE];
 };
 
 class IX_ScanIterator {

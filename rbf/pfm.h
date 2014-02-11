@@ -92,7 +92,7 @@ typedef unordered_map<string, FileSpaceManager> MultipleFilesSpaceManager;
 /*
  * Paged File Manager
  */
-#define __DEBUG__
+// #define __DEBUG__
 class PagedFileManager
 {
 public:
