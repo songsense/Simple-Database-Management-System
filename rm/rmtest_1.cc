@@ -500,6 +500,10 @@ void Tests()
 
 int main()
 {
+	remove("tbl_employee");
+	remove("tbl_employee1");
+	remove("tbl_employee2");
+	remove("tbl_employee3");
     // Basic Functions
     cout << endl << "Test Basic Functions..." << endl;
     remove("tbl_employee3");

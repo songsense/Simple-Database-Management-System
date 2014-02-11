@@ -627,7 +627,7 @@ RC RecordBasedFileManager::reorganizeFile(FileHandle &fileHandle,
 			// if not move data to buffer page
 			// first verify the free space available for the buffer page
 			int availableSpace = rbfm->getFreeSpaceSize(bufferPage);
-			if (availableSpace < recordSize) {
+			if (availableSpace < int(recordSize)) {
 				// new a page for reorganizing
 				buffer.push_back(bufferPage);
 				bufferPage = new char[PAGE_SIZE];
