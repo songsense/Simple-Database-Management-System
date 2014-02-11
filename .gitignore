@@ -13,11 +13,9 @@
 *.a
 /Debug
 
-*.inc
 
 rbf/rbftest
 
-*.inc
 
 
 test_4
