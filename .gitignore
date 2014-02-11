@@ -19,7 +19,6 @@ rbf/rbftest
 
 *.inc
 
-makefile.inc
 
 test_4
 
