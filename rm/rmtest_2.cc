@@ -296,6 +296,12 @@ void secA_15(const string &tableName) {
     void *tuple;
     void *returnedData = malloc(100);
     int ageVal = 25;
+    float heightVal = 180.0;
+    char strVal[100];
+    char strTemp[100] = "helen";
+    int strSize = 5;
+    memcpy(strVal, &strSize, sizeof(int));
+    memcpy(strVal+sizeof(int), strTemp, strSize);
 
     RID rids[numTuples];
     vector<char *> tuples;
@@ -307,11 +313,16 @@ void secA_15(const string &tableName) {
         tuple = malloc(100);
 
         // Insert Tuple
-        float height = (float)i;
+        float height = (float)(rand()%30) + 160;
+        int strLen = (rand()%5) + 5;
+        string empName;
+        for (int i = 0; i < strLen; ++i) {
+        	empName.push_back(rand()%26+'a');
+        }
         
         age = (rand()%20) + 15;
         
-        prepareTuple(6, "Tester", age, height, 123, tuple, &tupleSize);
+        prepareTuple(empName.size(), empName, age, height, 123, tuple, &tupleSize);
         rc = rm->insertTuple(tableName, tuple, rid);
         assert(rc == success);
 
@@ -322,19 +333,28 @@ void secA_15(const string &tableName) {
 
     // Set up the iterator
     RM_ScanIterator rmsi;
-    string attr = "Age";
+    string attr = "EmpName";
     vector<string> attributes;
     attributes.push_back(attr); 
-    rc = rm->scan(tableName, attr, GT_OP, &ageVal, attributes, rmsi);
+    rc = rm->scan(tableName, attr, GT_OP, strVal, attributes, rmsi);
     assert(rc == success); 
 
     cout << "Scanned Data:" << endl;
     
+    int totalNum(0);
     while(rmsi.getNextTuple(rid, returnedData) != RM_EOF)
     {
-        cout << "Age: " << *(int *)returnedData << endl;
-        assert ( (*(int *) returnedData) > ageVal );
+    	int len = *(int *)returnedData;
+    	char str[100];
+    	memcpy(str, returnedData+sizeof(int), len);
+    	str[len] = '\0';
+        cout << "str len: " << len <<
+        		"\t" << str << endl;
+        ++totalNum;
+        // assert ( (*(float *) returnedData) != heightVal );
     }
+    // assert(totalNum == numTuples);
+
     rmsi.close();
     
     // Deleta Table

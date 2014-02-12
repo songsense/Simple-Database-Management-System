@@ -12,18 +12,35 @@
 // define return code error
 #define IX_SLOT_DIR_OVERFLOW 60
 #define IX_NOT_ENOUGH_SPACE 61
+#define IX_SLOT_DIR_LESS_ZERO 62
+// define return code warning
+#define IX_LOWER_BOUND 70
+#define IX_UPPER_BOUND 71
+#define IX_HIT 72
+#define IX_ABOVE 73
+#define IX_BELOW 74
 
+// define duplicate flag
+typedef bool Dup;
+/*
+ * The structure of a leaf frame
+ * key			variable
+ * RID			8bytes
+ * Dup	bool	1byte
+ * The structure of a nonleaf frame
+ * key			variable
+ * PageNum		4bytes	prev
+ * PageNum		4bytes	next
+ */
 // define the index slot directory
-typedef unsigned short SlotOffset;
+typedef unsigned short Offset;
 typedef unsigned short RecordLength;
 struct IndexDir{
-	SlotOffset slotOffset;
+	Offset slotOffset;
 	RecordLength recordLength;
-	PageNum nextPageNum;
 };
 
 // define the free space length
-typedef unsigned short FreeSpaceSize;
 typedef unsigned long Address;
 typedef bool IsLeaf;
 
@@ -71,46 +88,69 @@ class IndexManager {
   IndexManager   ();                            // Constructor
   ~IndexManager  ();                            // Destructor
 
- private:
+ public:
   static IndexManager *_index_manager;
   // api to handle an index page
   void setPageEmpty(void *page);
+
+  // free space operation
   void* getFreeSpaceStartPoint(const void *page);
-  FreeSpaceSize getFreeSpaceOffset(const void *page);
+  Offset getFreeSpaceOffset(const void *page);
   void setFreeSpaceStartPoint(void *page, const void *point);
   int getFreeSpaceSize(const void *page);
+
+  // set/get prev/next page number
   PageNum getPrevPageNum(const void *page);
   PageNum getNextPageNum(const void *page);
   void setPrevPageNum(void *page, const PageNum &pageNum);
   void setNextPageNum(void *page, const PageNum &pageNum);
+
+  // leaf flag operation
   bool isPageLeaf(const void *page);
   void setPageLeaf(void *page, const bool &isLeaf);
+
+  // slot number
   SlotNum getSlotNum(const void *page);
   void setSlotNum(void *page, const SlotNum &slotNum);
+
+  // slot dir
   RC getSlotDir(const void *page,
 		  IndexDir &indexDir,
 		  const SlotNum &slotNum);
   RC setSlotDir(void *page,
 		  const IndexDir &indexDir,
 		  const SlotNum &slotNum);
+
   // get a key's size
   int getKeySize(const Attribute &attr, const void *key);
+
   // binary search an entry
   RC binarySearchEntry(const void *page,
 		  const Attribute &attr,
-		  const void *key, const unsigned &keyLen,
+		  const void *key,
 		  SlotNum &slotNum);
   // insert an entry into page at pos n
-  RC insertEntryAtPosLeaf(void *page, const SlotNum &slotNum,
+  RC insertEntryAtPos(void *page, const SlotNum &slotNum,
 		  const Attribute &attr,
 		  const void *key, const unsigned &keyLen,
-		  const RID &rid,  const PageNum &nextPageNum);
+		  const RID &rid, const Dup &dup,
+		  const PageNum &prevPageNum,
+		  const PageNum &nextPageNum);
   // delete an entry of page at pos n
-  RC deleteEntryAtPosLeaf(void *page, const SlotNum &slotNum);
+  RC deleteEntryAtPos(void *page, const SlotNum &slotNum);
+
   // compare two key
   // negative: <; positive: >; equal: =;
   int compareKey(const Attribute &attr,
 		  const void *lhs, const void *rhs);
+
+
+  // for debug only
+  void printPage(const void *page, const Attribute &attr);
+  void printLeafPage(const void *page, const Attribute &attr);
+  void printNonLeafPage(const void *page, const Attribute &attr);
+  void printKey(const Attribute &attr,
+		  const void *key);
   char Entry[PAGE_SIZE];
 };
 

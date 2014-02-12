@@ -976,8 +976,8 @@ bool RBFM_ScanIterator::compareValue(const void *record, const AttrType &type) {
 		len_rhs = *((int *)value);
 		lhs_cstr = new char[len_lhs+1];
 		rhs_cstr = new char[len_rhs+1];
-		memcpy(lhs_cstr, record, len_lhs);
-		memcpy(rhs_cstr, value, len_rhs);
+		memcpy(lhs_cstr, (char *)record+sizeof(int), len_lhs);
+		memcpy(rhs_cstr, (char *)value+sizeof(int), len_rhs);
 		lhs_cstr[len_lhs] = '\0';
 		rhs_cstr[len_rhs] = '\0';
 		lhs_str.assign(lhs_cstr);

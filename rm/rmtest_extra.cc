@@ -360,7 +360,7 @@ void secB_3(const string tablename)
 
 
 
-int main() 
+int main()
 {
 	remove("tbl_employee");
 	remove("tbl_employee2");

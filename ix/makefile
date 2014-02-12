@@ -20,7 +20,7 @@ ixtest1: ixtest1.o libix.a $(CODEROOT)/rbf/librbf.a
 
 ixtest2: ixtest2.o libix.a $(CODEROOT)/rbf/librbf.a
 
-ixtest3: ixtest3.o libix.a $(CODEROOT)/rbf/librbf.a 
+ixtest_me: ixtest_me.o libix.a $(CODEROOT)/rbf/librbf.a 
 
 # dependencies to compile used libraries
 .PHONY: $(CODEROOT)/rbf/librbf.a
