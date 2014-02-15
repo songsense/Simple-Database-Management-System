@@ -231,7 +231,7 @@ RC FileHandle::writePage(PageNum pageNum, const void *data)
 {
 	//check page existence
 	if (pageNum > getNumberOfPages()) {
-		PagedFileManager::instance()->PrintError("file does not exist in FileHandle::writePage");
+		cout << "file does not exist in FileHandle::writePage" << endl;
 		return PAGE_NOT_EXIST;
 	} else {
 		if (ferror(pFile)) {

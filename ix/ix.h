@@ -3,7 +3,10 @@
 #define _ix_h_
 
 #include <vector>
+#include <unordered_map>
 #include <string>
+#include <unordered_set>
+
 
 #include "../rbf/rbfm.h"
 
@@ -19,6 +22,7 @@
 #define IX_HIT 72
 #define IX_ABOVE 73
 #define IX_BELOW 74
+#define IX_FAILTO_ALLOCATE_PAGE 75
 
 // define duplicate flag
 typedef bool Dup;
@@ -40,9 +44,19 @@ struct IndexDir{
 	RecordLength recordLength;
 };
 
+// define the slot to be delete for dup record page
+const Offset DUP_SLOT_IN_USE = 0;
+const Offset DUP_SLOT_DEL = 1;
+const PageNum DUP_PAGENUM_END = -1;
+
+
 // define the free space length
 typedef unsigned long Address;
-typedef bool IsLeaf;
+typedef char IsLeaf;
+const char NOT_LEAF = 0;
+const char IS_LEAF = 1;
+const char IS_DUP_PAGE = 2;
+const int DUP_RECORD_SIZE = sizeof(RID)*2;
 
 // define the begin/end of page
 const PageNum EOF_PAGE_NUM = -1;
@@ -92,6 +106,7 @@ class IndexManager {
   static IndexManager *_index_manager;
   // api to handle an index page
   void setPageEmpty(void *page);
+  bool isPageEmpty(void *page);
 
   // free space operation
   void* getFreeSpaceStartPoint(const void *page);
@@ -99,31 +114,34 @@ class IndexManager {
   void setFreeSpaceStartPoint(void *page, const void *point);
   int getFreeSpaceSize(const void *page);
 
+  // leaf flag operation
+  IsLeaf isPageLeaf(const void *page);
+  void setPageLeaf(void *page, const IsLeaf &isLeaf);
+
   // set/get prev/next page number
   PageNum getPrevPageNum(const void *page);
   PageNum getNextPageNum(const void *page);
   void setPrevPageNum(void *page, const PageNum &pageNum);
   void setNextPageNum(void *page, const PageNum &pageNum);
 
-  // leaf flag operation
-  bool isPageLeaf(const void *page);
-  void setPageLeaf(void *page, const bool &isLeaf);
-
   // slot number
   SlotNum getSlotNum(const void *page);
   void setSlotNum(void *page, const SlotNum &slotNum);
 
   // slot dir
-  RC getSlotDir(const void *page,
+  RC getIndexDir(const void *page,
 		  IndexDir &indexDir,
 		  const SlotNum &slotNum);
-  RC setSlotDir(void *page,
+  RC setIndexDir(void *page,
 		  const IndexDir &indexDir,
 		  const SlotNum &slotNum);
 
   // get a key's size
   int getKeySize(const Attribute &attr, const void *key);
 
+  /*
+   * Insert/delete/search an entry
+   */
   // binary search an entry
   RC binarySearchEntry(const void *page,
 		  const Attribute &attr,
@@ -139,6 +157,16 @@ class IndexManager {
   // delete an entry of page at pos n
   RC deleteEntryAtPos(void *page, const SlotNum &slotNum);
 
+  /*
+   * Split/merge pages
+   */
+  RC splitPage(void *oldPage, void *newPage,
+		  const Attribute &attr,
+		  IsLeaf &isLeaf, void *keyCopiedUp);
+  RC mergePage(void *srcPage, void *destPage,
+		  const Attribute &attr);
+
+
   // compare two key
   // negative: <; positive: >; equal: =;
   int compareKey(const Attribute &attr,
@@ -149,6 +177,7 @@ class IndexManager {
   void printPage(const void *page, const Attribute &attr);
   void printLeafPage(const void *page, const Attribute &attr);
   void printNonLeafPage(const void *page, const Attribute &attr);
+  void printDupPage(const void *page);
   void printKey(const Attribute &attr,
 		  const void *key);
   char Entry[PAGE_SIZE];
@@ -163,8 +192,56 @@ class IX_ScanIterator {
   RC close();             						// Terminate index scan
 };
 
+//TODO
 // print out the error message for a given return code
 void IX_PrintError (RC rc);
+
+/*
+ * 		in charge of half used (for overflow)
+ * 		and empty page
+ * 		next dup RID; RID in database
+ */
+class SpaceManager {
+public:
+	static SpaceManager* instance();
+	static SpaceManager *_space_manager;
+protected:
+	SpaceManager();
+	~SpaceManager();
+private:
+	unordered_map<string, unordered_set<PageNum> >dupRecordPageList;
+	unordered_map<string, unordered_set<PageNum> >emptyPageList;
+public:
+	RC initIndexFile(const string &indexFileName);
+	void closeIndexFileInfo(const string &indexFileName);
+	// given first duplicated head RID and data RID
+	// insert the dup record with assigned RID in index
+	// NOTE: first use: need config dupHeadRid.PageNum = DUP_PAGENUM_END
+	RC insertDupRecord(FileHandle &fileHandle,
+			const RID &dupHeadRID,
+			const RID &dataRID,
+			RID &dupAssignedRID);
+	RC deleteDupRecord(FileHandle &fileHandle,
+			const RID &dupHeadRID);
+	// get dup record page
+	RC getDupPage(FileHandle &fileHandle,
+			PageNum &pageNum);
+	// put an available dup page to the list
+	// Note: must check the space availability before inserting
+	void putDupPage(FileHandle &fileHandle,
+			const PageNum &pageNum);
+	// check if a dup page exists
+	bool dupPageExist(FileHandle &fileHandle,
+			const PageNum &pageNum);
+	// get an empty page if there is one
+	// if no empty page exists, new one and return that
+	RC getEmptyPage(FileHandle &fileHandle,
+			PageNum &pageNum);
+	RC putEmptyPage(FileHandle &fileHandle,
+			const PageNum &pageNum);
+private:
+	char page[PAGE_SIZE];
+};
 
 
 #endif

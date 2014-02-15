@@ -17,14 +17,14 @@ unsigned prepareKey(void *key, const string &str) {
 }
 void basic_test() {
 	RC rc;
-	cout << "begin basic test" << endl;
+	cout << "******************begin basic test" << endl;
 	Attribute attr;
 	attr.length = 35;
 	attr.name = "EmpName";
 	attr.type = TypeVarChar;
 	char page[PAGE_SIZE];
 	ix->setPageEmpty(page);
-	ix->setPageLeaf(page, false);
+	ix->setPageLeaf(page, NOT_LEAF);
 	// prepare data
 	char key[PAGE_SIZE];
 	unsigned keyLen = prepareKey(key, "Peter");
@@ -80,12 +80,11 @@ void basic_test() {
 		ix->printPage(page, attr);
 	}
 
-	cout << "end basic test" << endl;
+	cout << "******************end basic test" << endl;
 }
 
 void basic_test_search_int() {
-	cout << "begin search test" << endl;
-	RC rc;
+	cout << "******************begin search test" << endl;
 	cout << "insert entry" << endl;
 	Attribute attr;
 	attr.length = sizeof(int);
@@ -93,7 +92,7 @@ void basic_test_search_int() {
 	attr.type = TypeInt;
 	char page[PAGE_SIZE];
 	ix->setPageEmpty(page);
-	ix->setPageLeaf(page, true);
+	ix->setPageLeaf(page, IS_LEAF);
 	// prepare data
 	char key[sizeof(int)];
 	SlotNum slotNum(1);
@@ -107,20 +106,19 @@ void basic_test_search_int() {
 		else
 			ageVal = 20 + rand()%60;
 		memcpy(key, &ageVal, sizeof(int));
-		rc = ix->binarySearchEntry(page, attr, key, slotNum);
+		ix->binarySearchEntry(page, attr, key, slotNum);
 
-		rc = ix->insertEntryAtPos(page, slotNum,
+		ix->insertEntryAtPos(page, slotNum,
 				attr,key, sizeof(int),
 				rid, false,
 				0, 0);
 	}
 	ix->printPage(page, attr);
 
-	cout << "end search test" << endl;
+	cout << "******************end search test" << endl;
 }
 void basic_test_search_float() {
-	cout << "begin search test" << endl;
-	RC rc;
+	cout << "******************begin search test" << endl;
 	cout << "insert entry" << endl;
 	Attribute attr;
 	attr.length = sizeof(float);
@@ -128,7 +126,7 @@ void basic_test_search_float() {
 	attr.type = TypeReal;
 	char page[PAGE_SIZE];
 	ix->setPageEmpty(page);
-	ix->setPageLeaf(page, false);
+	ix->setPageLeaf(page, NOT_LEAF);
 	// prepare data
 	char key[sizeof(float)];
 	SlotNum slotNum(1);
@@ -139,20 +137,19 @@ void basic_test_search_float() {
 	for (int i = 0; i < indexNum; ++i) {
 		salaryVal = 5000.0 + (float(rand()))/RAND_MAX*1000.0;
 		memcpy(key, &salaryVal, sizeof(float));
-		rc = ix->binarySearchEntry(page, attr, key, slotNum);
+		ix->binarySearchEntry(page, attr, key, slotNum);
 
-		rc = ix->insertEntryAtPos(page, slotNum,
+		ix->insertEntryAtPos(page, slotNum,
 				attr,key, sizeof(float),
 				rid, false,
 				0, 0);
 	}
 	ix->printPage(page, attr);
 
-	cout << "end search test" << endl;
+	cout << "******************end search test" << endl;
 }
 void basic_test_search_string() {
-	cout << "begin search test" << endl;
-	RC rc;
+	cout << "******************begin search test" << endl;
 	cout << "insert entry" << endl;
 	Attribute attr;
 	attr.length = 40;
@@ -160,7 +157,7 @@ void basic_test_search_string() {
 	attr.type = TypeVarChar;
 	char page[PAGE_SIZE];
 	ix->setPageEmpty(page);
-	ix->setPageLeaf(page, false);
+	ix->setPageLeaf(page, IS_LEAF);
 	// prepare data
 	char key[sizeof(float)];
 	SlotNum slotNum(1);
@@ -176,17 +173,169 @@ void basic_test_search_string() {
 		len = str.size();
 		memcpy(key, &len, sizeof(int));
 		memcpy(key+sizeof(int), str.c_str(), len);
-		rc = ix->binarySearchEntry(page, attr, key, slotNum);
-
-		rc = ix->insertEntryAtPos(page, slotNum,
+		ix->binarySearchEntry(page, attr, key, slotNum);
+		ix->insertEntryAtPos(page, slotNum,
 				attr,key, sizeof(int)+len,
 				rid, false,
 				0, 0);
 	}
 	ix->printPage(page, attr);
 
-	cout << "end search test" << endl;
+	cout << "******************end search test" << endl;
 }
+
+void basic_test_space_manager() {
+	cout << "******************begin space manager test" << endl;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	FileHandle fileHandle;
+	Attribute attr;
+	RC rc;
+	remove(indexFileName.c_str());
+
+	rc = ix->createFile(indexFileName);
+	assert(rc == success);
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	// insert dup record
+	RID dupHeadRID, dataRID, dupAssignedRID;
+	int dupNumber = 30; // also for slot number
+	int dupPairNumber = 20; // also for page number
+	vector<RID> dupHeadRIDs(dupPairNumber, dupHeadRID);
+	for (int i = 0; i < dupPairNumber; ++i) {
+		dupHeadRIDs[i].pageNum = DUP_PAGENUM_END;
+		dupHeadRIDs[i].slotNum = 1;
+		dataRID.pageNum = i;
+		dataRID.slotNum = 1;
+		rc = sm->insertDupRecord(fileHandle,
+				dupHeadRIDs[i], dataRID, dupAssignedRID);
+		assert(rc == success);
+		dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
+		dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
+		for (int j = 2; j <= dupNumber; ++j) {
+			dataRID.slotNum = j;
+			rc = sm->insertDupRecord(fileHandle,
+					dupHeadRIDs[i], dataRID, dupAssignedRID);
+			assert(rc == success);
+			dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
+			dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
+		}
+	}
+
+	// now delete half of them
+	cout << "now delete half of them" << endl;
+	for (int i = 0; i < dupPairNumber; i+=2) {
+		rc = sm->deleteDupRecord(fileHandle, dupHeadRIDs[i]);\
+		assert(rc == success);
+	}
+
+	// insert another one half
+	cout << "now add 5 groups" << endl;
+	dupPairNumber =  5;
+	dupNumber = 12;
+	for (int i = 0; i < dupPairNumber; i+=2) {
+		dupHeadRIDs[i].pageNum = DUP_PAGENUM_END;
+		dupHeadRIDs[i].slotNum = 1;
+		dataRID.pageNum = 100+i;
+		dataRID.slotNum = 1;
+		rc = sm->insertDupRecord(fileHandle,
+				dupHeadRIDs[i], dataRID, dupAssignedRID);
+		assert(rc == success);
+		dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
+		dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
+		for (int j = 2; j <= dupNumber; ++j) {
+			dataRID.slotNum = j;
+			rc = sm->insertDupRecord(fileHandle,
+					dupHeadRIDs[i], dataRID, dupAssignedRID);
+			assert(rc == success);
+			dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
+			dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
+		}
+	}
+	char page[PAGE_SIZE];
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printDupPage(page);
+	}
+	// delete all
+	cout << "delete all" << endl;
+	dupPairNumber = 20;
+	for (int i = 0; i < dupPairNumber; ++i) {
+		rc = sm->deleteDupRecord(fileHandle, dupHeadRIDs[i]);\
+		assert(rc == success);
+	}
+
+	totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printDupPage(page);
+	}
+
+
+	// test empty page
+	cout << "test empty page module" << endl;
+	// by now we should have at least three empty pages
+	PageNum emptyPageNum;
+	for (int i = 0; i < 4; ++i) {
+		rc = sm->getEmptyPage(fileHandle, emptyPageNum);
+		assert(rc == success);
+		cout << emptyPageNum << "\t";
+	}
+	cout << endl;
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+
+
+	cout << "******************end space manager test" << endl;
+}
+
+void basic_test_space_manager_2() {
+	cout << "******************begin space manager test 2" << endl;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	FileHandle fileHandle;
+	Attribute attr;
+	RC rc;
+
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	// print
+	char page[PAGE_SIZE];
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printDupPage(page);
+	}
+
+	// empty
+	PageNum emptyPageNum;
+	for (int i = 0; i < 4; ++i) {
+		rc = sm->getEmptyPage(fileHandle, emptyPageNum);
+		assert(rc == success);
+		cout << emptyPageNum << "\t";
+	}
+	cout << endl;
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+
+	cout << "******************end space manager test 2" << endl;
+}
+
 //TODO
 int main()
 {
@@ -195,6 +344,8 @@ int main()
 	basic_test_search_int();
 	basic_test_search_float();
 	basic_test_search_string();
+	basic_test_space_manager();
+	basic_test_space_manager_2();
 
 	cout << "Finish all tests" << endl;
 	return 0;
