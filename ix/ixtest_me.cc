@@ -330,17 +330,90 @@ void basic_test_space_manager_2() {
 	cout << "******************end space manager test 2" << endl;
 }
 
+void basic_test_insert() {
+	cout << "******************begin insert test" << endl;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 35;
+	attr.name = "EmpName";
+	attr.type = TypeVarChar;
+	// prepare data
+	char key[PAGE_SIZE];
+	prepareKey(key, "Peter");
+
+	RC rc;
+
+	rc = ix->createFile(indexFileName);
+	assert(rc == success);
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	RID rid;
+	rid.pageNum = 0, rid.slotNum = 1;
+	rc = ix->insertEntry(fileHandle, attr, key, rid);
+	assert(rc == success);
+
+	rid.pageNum = 0, rid.slotNum = 2;
+	prepareKey(key, "Lucy");
+	rc = ix->insertEntry(fileHandle, attr, key, rid);
+	assert(rc == success);
+
+	rid.pageNum = 0, rid.slotNum = 3;
+	prepareKey(key, "Emily");
+	rc = ix->insertEntry(fileHandle, attr, key, rid);
+	assert(rc == success);
+
+	rid.pageNum = 0, rid.slotNum = 4;
+	prepareKey(key, "Emily");
+	rc = ix->insertEntry(fileHandle, attr, key, rid);
+	assert(rc == success);
+
+	rid.pageNum = 0, rid.slotNum = 5;
+	prepareKey(key, "Emily");
+	rc = ix->insertEntry(fileHandle, attr, key, rid);
+	assert(rc == success);
+
+	rid.pageNum = 0, rid.slotNum = 6;
+	prepareKey(key, "Lucy");
+	rc = ix->insertEntry(fileHandle, attr, key, rid);
+	assert(rc == success);
+
+
+	char page[PAGE_SIZE];
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printPage(page, attr);
+	}
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+
+	cout << "******************end insert test" << endl;
+}
+
+
 //TODO
 int main()
 {
 	cout << "Begin tests" << endl;
+	/*
 	basic_test();
 	basic_test_search_int();
 	basic_test_search_float();
 	basic_test_search_string();
 	basic_test_space_manager();
 	basic_test_space_manager_2();
-
+*/
+	basic_test_insert();
 	cout << "Finish all tests" << endl;
 	return 0;
 }

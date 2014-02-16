@@ -22,7 +22,35 @@ IndexManager::~IndexManager()
 
 RC IndexManager::createFile(const string &fileName)
 {
-	return PagedFileManager::instance()->createFile(fileName.c_str());
+	RC rc;
+	PagedFileManager *pfm = PagedFileManager::instance();
+	rc = pfm->createFile(fileName.c_str());
+	if(rc != SUCC) {
+		cerr << "IndexManager::createFile: create index file error " << rc << endl;
+		return rc;
+	}
+	FileHandle fileHandle;
+	rc = pfm->openFile(fileName.c_str(), fileHandle);
+	if(rc != SUCC) {
+		cerr << "IndexManager::createFile: open index file error " << rc << endl;
+		return rc;
+	}
+
+	setPageEmpty(Entry);
+	setPageLeaf(Entry, IS_LEAF);
+	rc = fileHandle.appendPage(Entry);
+	if(rc != SUCC) {
+		cerr << "IndexManager::createFile: append root page eror " << rc << endl;
+		return rc;
+	}
+
+	rc = pfm->closeFile(fileHandle);
+	if(rc != SUCC) {
+		cerr << "IndexManager::createFile: close index file error " << rc << endl;
+		return rc;
+	}
+
+	return rc;
 }
 
 RC IndexManager::destroyFile(const string &fileName)
@@ -73,8 +101,10 @@ RC IndexManager::closeFile(FileHandle &fileHandle)
 
 RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-	//TODO
-	return -1;
+	RC rc;
+	rc = insertEntry(ROOT_PAGE, fileHandle,
+			attribute, key, rid);
+	return rc;
 }
 
 RC IndexManager::deleteEntry(FileHandle &fileHandle, const Attribute &attribute, const void *key, const RID &rid)
@@ -140,7 +170,7 @@ void IndexManager::setPageEmpty(void *page) {
 	setFreeSpaceStartPoint(page, page);
 	setNextPageNum(page, 0);
 	setPrevPageNum(page, 0);
-	setPageLeaf(page, false);
+	setPageLeaf(page, NOT_LEAF);
 	setSlotNum(page, 0);
 }
 
@@ -284,6 +314,189 @@ int IndexManager::getKeySize(const Attribute &attr, const void *key) {
 	}
 	return -1;
 }
+
+
+/*
+ * Insert/delete/search an entry
+ */
+// Insert new index entry
+RC IndexManager::insertEntry(const PageNum &pageNum,
+		FileHandle &fileHandle,
+		const Attribute &attribute,
+		const void *key, const RID &rid) {
+// TODO
+	RC rc;
+	SpaceManager *sm = SpaceManager::instance();
+
+	rc = fileHandle.readPage(pageNum, block);
+	if (rc != SUCC) {
+		cerr << "IndexManager::insertEntry: error read page " << rc << endl;
+		return rc;
+	}
+	IsLeaf pageType = isPageLeaf(block);
+	if (pageType == IS_DUP_PAGE) {
+		cerr << "IndexManager::insertEntry: read dup page " << IX_READ_DUP_PAGE << endl;
+		return IX_READ_DUP_PAGE;
+	}
+
+	if (isPageEmpty(block) && pageNum == ROOT_PAGE) {
+		// the very first data, just insert and return
+		// set the data
+		char *data = (char *)block;
+		int keyLen = getKeySize(attribute, key);
+		memcpy(data, key, keyLen);
+		data += keyLen;
+		memcpy(data, &rid, sizeof(RID));
+		data += sizeof(RID);
+		Dup dup = false;
+		memcpy(data, &dup, sizeof(Dup));
+
+		// set the index slot dir
+		setSlotNum(block, 1);
+		IndexDir indexDir;
+		indexDir.recordLength = keyLen + sizeof(RID) + sizeof(Dup);
+		indexDir.slotOffset = 0;
+		setIndexDir(block, indexDir, 1);
+
+		// set start point
+		data = block + indexDir.recordLength;
+		setFreeSpaceStartPoint(block, data);
+
+		// set page type as leaf
+		setPageLeaf(block, IS_LEAF);
+
+		// write disk
+		rc = fileHandle.writePage(pageNum, block);
+		if (rc != SUCC) {
+			cerr << "IndexManager::insertEntry: error write root page " << rc << endl;
+			return rc;
+		}
+		return SUCC;
+	}
+
+	// search the key
+	SlotNum slotNum;
+	RC rc_search = binarySearchEntry(block, attribute, key, slotNum);
+
+
+	IndexDir indexDir;
+	rc = getIndexDir(block, indexDir, slotNum);
+	if (rc != SUCC) {
+		cerr << "IndexManager::insertEntry: get index dir error " << rc << endl;
+		return rc;
+	}
+	char *data = block + indexDir.slotOffset;
+
+	if (pageType == IS_LEAF) {
+		if (rc_search == IX_SEARCH_HIT) {
+			Dup isDup;
+			memcpy(&isDup,
+					data + indexDir.recordLength-sizeof(Dup),
+					sizeof(Dup));
+			RID dupHeadRID, dupAssignedRID;
+			if (isDup == true) {
+				// this is already a dup record
+				memcpy(&dupHeadRID,
+						data + indexDir.recordLength-sizeof(Dup)-sizeof(RID),
+						sizeof(RID));
+				rc = sm->insertDupRecord(fileHandle,
+						dupHeadRID, rid, dupAssignedRID);
+				if (rc != SUCC) {
+					cerr << "IndexManager::insertEntry: insert dup record error 1 " << rc << endl;
+					return rc;
+				}
+				memcpy(data + indexDir.recordLength-sizeof(Dup)-sizeof(RID),
+						&dupAssignedRID, sizeof(RID));
+			} else {
+				// this is not a dup record
+				// set the record to be dup
+				isDup = true;
+				memcpy(data + indexDir.recordLength - sizeof(Dup),
+						&isDup, sizeof(Dup));
+				// set the first record
+				dupHeadRID.pageNum = DUP_PAGENUM_END;
+				dupHeadRID.slotNum = 0;
+				rc = sm->insertDupRecord(fileHandle,
+						dupHeadRID, rid, dupAssignedRID);
+				if (rc != SUCC) {
+					cerr << "IndexManager::insertEntry: insert dup record error 2 " << rc << endl;
+					return rc;
+				}
+				// set the second record
+				RID dataRID;
+				memcpy(&dataRID,
+						data + indexDir.recordLength - sizeof(Dup) - sizeof(RID),
+						sizeof(RID));
+				dupHeadRID.pageNum = dupAssignedRID.pageNum;
+				dupHeadRID.slotNum = dupAssignedRID.slotNum;
+				rc = sm->insertDupRecord(fileHandle,
+						dupHeadRID, dataRID, dupAssignedRID);
+				if (rc != SUCC) {
+					cerr << "IndexManager::insertEntry: insert dup record error 3 " << rc << endl;
+					return rc;
+				}
+				// set the rid of the record at the page
+				memcpy(data + indexDir.recordLength - sizeof(Dup) - sizeof(RID),
+						&dupAssignedRID, sizeof(RID));
+			}
+			// write to the page
+			rc = fileHandle.writePage(pageNum, block);
+			if (rc != SUCC) {
+				cerr << "IndexManager::insertEntry: write page error 1 " << rc << endl;
+				return rc;
+			}
+		} else {
+			// not hit, need to insert
+			int keyLen = getKeySize(attribute, key);
+			rc = insertEntryAtPos(block, slotNum, attribute,
+					key, keyLen, rid, false, 0, 0);
+			if (rc != SUCC) {
+				cerr << "IndexManager::insertEntry: insert entry error 1 " << rc << endl;
+				return rc;
+			}
+			// TODO split
+			// write to the page
+			rc = fileHandle.writePage(pageNum, block);
+			if (rc != SUCC) {
+				cerr << "IndexManager::insertEntry: write page error 2 " << rc << endl;
+				return rc;
+			}
+		}
+	} else {
+		// continue search until reach a leaf
+		// |p|key|p|key|p|key|p|
+		if (rc_search == IX_SEARCH_LOWER_BOUND ||
+				rc_search == IX_SEARCH_ABOVE) {
+			// look at left
+			data -= sizeof(PageNum);
+
+		} else if (rc_search == IX_SEARCH_UPPER_BOUND ||
+				rc_search == IX_SEARCH_HIT ||
+				rc_search == IX_SEARCH_BELOW) {
+			// look at right
+			data += (indexDir.recordLength - sizeof(PageNum));
+		}
+		PageNum nextPageNum;
+		memcpy(&nextPageNum, data, sizeof(PageNum));
+		rc = insertEntry(nextPageNum,
+				fileHandle,
+				attribute, key, rid);
+		if (rc != SUCC) {
+			cerr << "IndexManager::insertEntry: next insert index entry error " << rc << endl;
+			return rc;
+		}
+	}
+
+	return SUCC;
+}
+// Delete index entry
+RC IndexManager::deleteEntry(const PageNum &pageNum,
+		FileHandle &fileHandle,
+		const Attribute &attribute,
+		const void *key, const RID &rid) {
+// TODO
+	return -1;
+}
 // binary search an entry
 RC IndexManager::binarySearchEntry(const void *page,
 		const Attribute &attr,
@@ -307,7 +520,7 @@ RC IndexManager::binarySearchEntry(const void *page,
 		int compResult = compareKey(attr, key, indexKey);
 		if (compResult == 0) {
 			slotNum = med;
-			return IX_HIT;
+			return IX_SEARCH_HIT;
 		} else if (compResult > 0) {
 			beg = med+1;
 		} else {
@@ -316,28 +529,28 @@ RC IndexManager::binarySearchEntry(const void *page,
 	}
 	if (beg > totalSlotNum) {
 		slotNum = totalSlotNum+1;
-		return IX_UPPER_BOUND;
+		return IX_SEARCH_UPPER_BOUND;
 	} else if (end < 1) {
 		slotNum = 1;
-		return IX_LOWER_BOUND;
+		return IX_SEARCH_LOWER_BOUND;
 	} else {
 		med = beg + (end-beg)/2;
 		rc = getIndexDir(page, indexDir, med);
 		if (rc != SUCC) {
-			cerr << "binarySearchEntry: error set slot dir " << rc << endl;
+			cerr << "binarySearchEntry: error get slot dir " << rc << endl;
 			return rc;
 		}
 		char *indexKey = (char *)page + indexDir.slotOffset;
 		int compResult = compareKey(attr, key, indexKey);
 		if (compResult == 0) {
 			slotNum = med;
-			return IX_HIT;
+			return IX_SEARCH_HIT;
 		} else if (compResult > 0) {
 			slotNum = med+1;
-			return IX_ABOVE;
+			return IX_SEARCH_ABOVE;
 		} else {
 			slotNum = med;
-			return IX_BELOW;
+			return IX_SEARCH_BELOW;
 		}
 	}
 	return SUCC;
@@ -775,7 +988,7 @@ RC SpaceManager::initIndexFile(const string &indexFileName) {
 
 	PageNum totalPageNum(0);
 	totalPageNum = fileHandle.getNumberOfPages();
-	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+	for (PageNum pn = 1; pn < totalPageNum; ++pn) {
 		rc = fileHandle.readPage(pn, page);
 		if (rc != SUCC) {
 			cerr << "initIndexFile: read page error " << rc << endl;

@@ -16,12 +16,13 @@
 #define IX_SLOT_DIR_OVERFLOW 60
 #define IX_NOT_ENOUGH_SPACE 61
 #define IX_SLOT_DIR_LESS_ZERO 62
+#define IX_READ_DUP_PAGE 63
 // define return code warning
-#define IX_LOWER_BOUND 70
-#define IX_UPPER_BOUND 71
-#define IX_HIT 72
-#define IX_ABOVE 73
-#define IX_BELOW 74
+#define IX_SEARCH_LOWER_BOUND 70
+#define IX_SEARCH_UPPER_BOUND 71
+#define IX_SEARCH_HIT 72
+#define IX_SEARCH_ABOVE 73
+#define IX_SEARCH_BELOW 74
 #define IX_FAILTO_ALLOCATE_PAGE 75
 
 // define duplicate flag
@@ -60,6 +61,8 @@ const int DUP_RECORD_SIZE = sizeof(RID)*2;
 
 // define the begin/end of page
 const PageNum EOF_PAGE_NUM = -1;
+// define the page number of a page
+const PageNum ROOT_PAGE = 0;
 
 
 class IX_ScanIterator;
@@ -102,8 +105,9 @@ class IndexManager {
   IndexManager   ();                            // Constructor
   ~IndexManager  ();                            // Destructor
 
- public:
+ private:
   static IndexManager *_index_manager;
+ public:
   // api to handle an index page
   void setPageEmpty(void *page);
   bool isPageEmpty(void *page);
@@ -142,6 +146,17 @@ class IndexManager {
   /*
    * Insert/delete/search an entry
    */
+  // Insert new index entry
+  RC insertEntry(const PageNum &pageNum,
+		  FileHandle &fileHandle,
+		  const Attribute &attribute,
+		  const void *key, const RID &rid);
+  // Delete index entry
+  RC deleteEntry(const PageNum &pageNum,
+		  FileHandle &fileHandle,
+		  const Attribute &attribute,
+		  const void *key, const RID &rid);
+
   // binary search an entry
   RC binarySearchEntry(const void *page,
 		  const Attribute &attr,
@@ -181,6 +196,7 @@ class IndexManager {
   void printKey(const Attribute &attr,
 		  const void *key);
   char Entry[PAGE_SIZE];
+  char block[PAGE_SIZE];
 };
 
 class IX_ScanIterator {
