@@ -222,7 +222,8 @@ public:
 			const RID &dataRID,
 			RID &dupAssignedRID);
 	RC deleteDupRecord(FileHandle &fileHandle,
-			const RID &dupHeadRID);
+			RID &dupHeadRID,
+			const RID &dataRID);
 	// get dup record page
 	RC getDupPage(FileHandle &fileHandle,
 			PageNum &pageNum);
@@ -241,6 +242,7 @@ public:
 			const PageNum &pageNum);
 private:
 	char page[PAGE_SIZE];
+	char prevPage[PAGE_SIZE];
 };
 
 

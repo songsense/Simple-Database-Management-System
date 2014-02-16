@@ -203,59 +203,60 @@ void basic_test_space_manager() {
 
 	// insert dup record
 	RID dupHeadRID, dataRID, dupAssignedRID;
-	int dupNumber = 30; // also for slot number
-	int dupPairNumber = 20; // also for page number
-	vector<RID> dupHeadRIDs(dupPairNumber, dupHeadRID);
-	for (int i = 0; i < dupPairNumber; ++i) {
-		dupHeadRIDs[i].pageNum = DUP_PAGENUM_END;
-		dupHeadRIDs[i].slotNum = 1;
-		dataRID.pageNum = i;
-		dataRID.slotNum = 1;
+	int dupNumber = 210;
+
+	dupHeadRID.pageNum = DUP_PAGENUM_END;
+	dupHeadRID.slotNum = 1;
+	dataRID.pageNum = 1;
+	dataRID.slotNum = 2;
+	rc = sm->insertDupRecord(fileHandle,
+			dupHeadRID, dataRID, dupAssignedRID);
+	assert(rc == success);
+	dupHeadRID.pageNum = dupAssignedRID.pageNum;
+	dupHeadRID.slotNum = dupAssignedRID.slotNum;
+	for (int i = 1; i < dupNumber; ++i) {
+		dataRID.pageNum += 1;
+		dataRID.slotNum += 2;
 		rc = sm->insertDupRecord(fileHandle,
-				dupHeadRIDs[i], dataRID, dupAssignedRID);
+				dupHeadRID, dataRID, dupAssignedRID);
 		assert(rc == success);
-		dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
-		dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
-		for (int j = 2; j <= dupNumber; ++j) {
-			dataRID.slotNum = j;
-			rc = sm->insertDupRecord(fileHandle,
-					dupHeadRIDs[i], dataRID, dupAssignedRID);
-			assert(rc == success);
-			dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
-			dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
-		}
+		dupHeadRID.pageNum = dupAssignedRID.pageNum;
+		dupHeadRID.slotNum = dupAssignedRID.slotNum;
+	}
+	// delete half of them
+	cout << "delete half of them" << endl;
+	dataRID.pageNum = 1;
+	dataRID.slotNum = 2;
+	for (int i = 0; i < dupNumber; i+=2) {
+		rc = sm->deleteDupRecord(fileHandle,
+				dupHeadRID, dataRID);
+		assert(rc == success);
+		dataRID.pageNum += 2;
+		dataRID.slotNum += 4;
 	}
 
-	// now delete half of them
-	cout << "now delete half of them" << endl;
-	for (int i = 0; i < dupPairNumber; i+=2) {
-		rc = sm->deleteDupRecord(fileHandle, dupHeadRIDs[i]);\
+	cout << "delete quarter of them" << endl;
+	dataRID.pageNum = 2;
+	dataRID.slotNum = 4;
+	for (int i = 0; i < dupNumber; i+=4) {
+		rc = sm->deleteDupRecord(fileHandle,
+				dupHeadRID, dataRID);
 		assert(rc == success);
+		dataRID.pageNum += 4;
+		dataRID.slotNum += 8;
 	}
 
-	// insert another one half
-	cout << "now add 5 groups" << endl;
-	dupPairNumber =  5;
-	dupNumber = 12;
-	for (int i = 0; i < dupPairNumber; i+=2) {
-		dupHeadRIDs[i].pageNum = DUP_PAGENUM_END;
-		dupHeadRIDs[i].slotNum = 1;
-		dataRID.pageNum = 100+i;
-		dataRID.slotNum = 1;
-		rc = sm->insertDupRecord(fileHandle,
-				dupHeadRIDs[i], dataRID, dupAssignedRID);
+	cout << "delete the rest of them" << endl;
+	dataRID.pageNum = 1;
+	dataRID.slotNum = 2;
+	for (int i = 0; i < dupNumber; ++i) {
+		rc = sm->deleteDupRecord(fileHandle,
+				dupHeadRID, dataRID);
 		assert(rc == success);
-		dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
-		dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
-		for (int j = 2; j <= dupNumber; ++j) {
-			dataRID.slotNum = j;
-			rc = sm->insertDupRecord(fileHandle,
-					dupHeadRIDs[i], dataRID, dupAssignedRID);
-			assert(rc == success);
-			dupHeadRIDs[i].pageNum = dupAssignedRID.pageNum;
-			dupHeadRIDs[i].slotNum = dupAssignedRID.slotNum;
-		}
+		dataRID.pageNum += 1;
+		dataRID.slotNum += 2;
 	}
+
 	char page[PAGE_SIZE];
 	PageNum totalPageNum = fileHandle.getNumberOfPages();
 	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
@@ -263,20 +264,13 @@ void basic_test_space_manager() {
 		assert(rc == success);
 		ix->printDupPage(page);
 	}
-	// delete all
-	cout << "delete all" << endl;
-	dupPairNumber = 20;
-	for (int i = 0; i < dupPairNumber; ++i) {
-		rc = sm->deleteDupRecord(fileHandle, dupHeadRIDs[i]);\
-		assert(rc == success);
-	}
 
-	totalPageNum = fileHandle.getNumberOfPages();
-	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
-		rc = fileHandle.readPage(pn, page);
-		assert(rc == success);
-		ix->printDupPage(page);
-	}
+	cout << "==========================================" << endl;
+	cout << "===================" <<
+			dupHeadRID.pageNum << "\t" <<
+			dupHeadRID.slotNum <<
+			"=================" << endl;
+	cout << "==========================================" << endl;
 
 
 	// test empty page

@@ -27,7 +27,16 @@ RC IndexManager::createFile(const string &fileName)
 
 RC IndexManager::destroyFile(const string &fileName)
 {
-	return PagedFileManager::instance()->destroyFile(fileName.c_str());
+	RC rc;
+	PagedFileManager *pfm = PagedFileManager::instance();
+	rc = pfm->destroyFile(fileName.c_str());
+	if(rc != SUCC) {
+		cerr << "IndexManager::destroyFile: destroy index file error " << rc << endl;
+		return rc;
+	}
+	SpaceManager *sm = SpaceManager::instance();
+	sm->closeIndexFileInfo(fileName);
+	return SUCC;
 }
 
 RC IndexManager::openFile(const string &fileName, FileHandle &fileHandle)
@@ -54,7 +63,7 @@ RC IndexManager::closeFile(FileHandle &fileHandle)
 	PagedFileManager *pfm = PagedFileManager::instance();
 	rc = pfm->closeFile(fileHandle);
 	if(rc != SUCC) {
-		cerr << "IndexManager::openFile: open index file error " << rc << endl;
+		cerr << "IndexManager::closeFile: close index file error " << rc << endl;
 		return rc;
 	}
 	SpaceManager *sm = SpaceManager::instance();
@@ -901,22 +910,103 @@ RC SpaceManager::insertDupRecord(FileHandle &fileHandle,
 	return SUCC;
 }
 RC SpaceManager::deleteDupRecord(FileHandle &fileHandle,
-		const RID &dupHeadRID) {
+		RID &dupHeadRID,
+		const RID &dataRID) {
 	IndexManager *ix = IndexManager::instance();
 	RC rc;
 	PageNum curPageNum = dupHeadRID.pageNum;
 	SlotNum curSlotNum = dupHeadRID.slotNum;
+	PageNum prevPageNum = dupHeadRID.pageNum;
+	SlotNum prevSlotNum = dupHeadRID.slotNum;
 
-	while (curPageNum != DUP_PAGENUM_END) {
+	while (true) {
+		rc = fileHandle.readPage(curPageNum, page);
+		if (rc != SUCC) {
+			cerr << "deleteDupRecord: try to read page " <<
+					curPageNum <<
+					" warning code " << rc << endl;
+			return SUCC;
+		}
+
+		// get the total number of slot num
+		SlotNum totalSlotNum = ix->getSlotNum(page);
+		if (curSlotNum > totalSlotNum) {
+			cerr << "try to delete a dup record, but does not exist in index" << endl;
+			return SUCC;
+		}
+
+		// read the data rid and next rid
+		RID curDataRid, nextRid;
+		char *data = page + DUP_RECORD_SIZE * (curSlotNum-1);
+		memcpy(&nextRid, data, sizeof(RID));
+		data += sizeof(RID);
+		memcpy(&curDataRid, data, sizeof(RID));
+
+		if (curDataRid.pageNum != dataRID.pageNum ||
+				curDataRid.slotNum != dataRID.slotNum) {
+			if (curPageNum == DUP_PAGENUM_END) {
+				// this is the last record
+				// nothing hit
+				// return
+				return SUCC;
+			}
+			// not the record to be deleted
+			// get the next dup record
+			prevPageNum = curPageNum;
+			prevSlotNum = curSlotNum;
+			curPageNum = nextRid.pageNum;
+			curSlotNum = nextRid.slotNum;
+			continue;
+		}
+
+		// hit!
+		// 1. need to reset the previous nextRID
+		// 1.1 the deleted record is the headRID
+		if (curPageNum == dupHeadRID.pageNum &&
+				curSlotNum == dupHeadRID.slotNum) {
+			dupHeadRID.pageNum = nextRid.pageNum;
+			dupHeadRID.slotNum = nextRid.slotNum;
+		} else {
+			// 1.2 the last one/a middle one
+			// need to change the next rid of previous page
+			rc = fileHandle.readPage(prevPageNum, prevPage);
+			if (rc != SUCC) {
+				cerr << "deleteDupRecord: read previous page error " << rc << endl;
+				return rc;
+			}
+			RID prevRID;
+			// get the next RID info of current page
+			data = page + DUP_RECORD_SIZE * (curSlotNum-1);
+			memcpy(&prevRID, data, sizeof(RID));
+			// set the next RID info of previous page
+			data = prevPage + DUP_RECORD_SIZE * (prevSlotNum-1);
+			memcpy(data, &prevRID, sizeof(RID));
+			rc = fileHandle.writePage(prevPageNum, prevPage);
+			if (rc != SUCC) {
+				cerr << "deleteDupRecord: write previous page error " << rc << endl;
+				return rc;
+			}
+			// debug info
+			/*
+			cout << "deleting data at page " << dataRID.pageNum <<
+					"\t of slot " << dataRID.slotNum << endl;
+			cout << ">>>>>curPageNum " << curPageNum <<
+					"\tcurSlotNum " << curSlotNum <<
+					"\tprevPageNum " << prevPageNum <<
+					"\tprevSlotNum " << prevSlotNum <<
+					"\tprevRID.pageNum " << prevRID.pageNum <<
+					"\tprevRID.slotNum " << prevRID.slotNum <<
+					endl;
+					*/
+		}
+
+		// reread page in case it is covered by previous operation
 		rc = fileHandle.readPage(curPageNum, page);
 		if (rc != SUCC) {
 			cerr << "deleteDupRecord: read page error " << rc << endl;
 			return rc;
 		}
-
-		// get the total number of slot num
-		SlotNum totalSlotNum = ix->getSlotNum(page);
-
+		// 2. need to reset the index dir
 		// get the Slot Dir;
 		if (totalSlotNum < curSlotNum) {
 			// this is not an error
@@ -975,15 +1065,13 @@ RC SpaceManager::deleteDupRecord(FileHandle &fileHandle,
 		// push the page to the list
 		// if a page already exists, no need for it already fits
 		// if a page does not exist, then push
-		if (!dupPageExist(fileHandle, curPageNum))
+		int spaceAvailable = ix->getFreeSpaceSize(page);
+		if (!dupPageExist(fileHandle, curPageNum) &&
+				spaceAvailable > DUP_RECORD_SIZE)
 			putDupPage(fileHandle, curPageNum);
 
-		// get the next dup record
-		char *data = page + DUP_RECORD_SIZE * (curSlotNum-1);
-		RID nextRid;
-		memcpy(&nextRid, data, sizeof(RID));
-		curPageNum = nextRid.pageNum;
-		curSlotNum = nextRid.slotNum;
+		// hit/finished so we return
+		break;
 	}
 
 	return SUCC;
