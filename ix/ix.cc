@@ -448,6 +448,7 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 		} else {
 			// not hit, need to insert
 			int keyLen = getKeySize(attribute, key);
+			// first look at the page
 			rc = insertEntryAtPos(block, slotNum, attribute,
 					key, keyLen, rid, false, 0, 0);
 			if (rc != SUCC) {
