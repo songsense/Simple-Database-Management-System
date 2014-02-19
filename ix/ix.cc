@@ -37,7 +37,7 @@ RC IndexManager::createFile(const string &fileName)
 	}
 
 	setPageEmpty(Entry);
-	setPageLeaf(Entry, IS_LEAF);
+	setPageLeaf(Entry, CONST_IS_LEAF);
 	rc = fileHandle.appendPage(Entry);
 	if(rc != SUCC) {
 		cerr << "IndexManager::createFile: append root page eror " << rc << endl;
@@ -102,8 +102,11 @@ RC IndexManager::closeFile(FileHandle &fileHandle)
 RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
 	RC rc;
+	char copiedUpKey[PAGE_SIZE];
+	bool copiedUp = false;
 	rc = insertEntry(ROOT_PAGE, fileHandle,
-			attribute, key, rid);
+			attribute, key, rid,
+			copiedUpKey, copiedUp);
 	return rc;
 }
 
@@ -153,11 +156,244 @@ void IX_PrintError (RC rc)
 /*
  * Split/merge pages
  */
-RC IndexManager::splitPage(void *oldPage, void *newPage,
+RC IndexManager::splitPageLeaf(void *oldPage,
+		void *pageLeft, void *pageRight,
 		const Attribute &attr,
-		IsLeaf &isLeaf, void *keyCopiedUp) {
-	//TODO
-	return -1;
+		const void *key, const RID &rid,
+		void *keyCopiedUp) {
+	RC rc;
+	setPageEmpty(pageLeft);
+	setPageEmpty(pageRight);
+	setPageLeaf(pageLeft, CONST_IS_LEAF);
+	setPageLeaf(pageRight, CONST_IS_LEAF);
+	int keyLen = getKeySize(attr, key);
+	// get the total slot number
+	SlotNum totalSlotNum = getSlotNum(oldPage);
+	// split the entry
+	SlotNum snLeft(1), snRight(1), halfSN(totalSlotNum/2);
+	bool isInserted = false;
+	for (SlotNum sn = 1; sn <= totalSlotNum; ++sn) {
+		// get index dir
+		IndexDir indexDir;
+		rc = getIndexDir(oldPage, indexDir, sn);
+		if (rc != SUCC) {
+			cerr << "IndexManager::splitPage: get index dir error " << rc << endl;
+			return rc;
+		}
+		// get the key
+		char *curKey = (char *)oldPage + indexDir.slotOffset;
+		unsigned curKeyLen = getKeySize(attr, curKey);
+		if (compareKey(attr, key, curKey) < 0 && !isInserted) {
+//			cout << "key is " << *(int*)key << endl;
+//			cout << "curKey is " << *(int*)curKey << endl;
+			isInserted = true;
+			// need to first insert the key to be inserted
+			if (sn < halfSN) {
+				rc = insertEntryAtPos(pageLeft, snLeft,
+						attr,
+						key, keyLen,
+						rid, false,
+						0, 0);
+				++snLeft;
+			} else {
+				rc = insertEntryAtPos(pageRight, snRight,
+						attr,
+						key, keyLen,
+						rid, false,
+						0, 0);
+				++snRight;
+			}
+			if (rc != SUCC) {
+				cerr << "IndexManager::splitPage: insertEntryAtPos error " << rc << endl;
+				return rc;
+			}
+		}
+		// get the rid of the current key
+		RID curRid;
+		char *data = (char *)oldPage + indexDir.slotOffset
+				+ indexDir.recordLength - sizeof(Dup) - sizeof(RID);
+		memcpy(&curRid, data, sizeof(RID));
+		data += sizeof(RID);
+		Dup curDup;
+		memcpy(&curDup, data, sizeof(Dup));
+		if (sn < halfSN) {
+			rc = insertEntryAtPos(pageLeft, snLeft,
+					attr,
+					curKey, curKeyLen,
+					curRid, curDup,
+					0,0);
+			++snLeft;
+		} else {
+			rc = insertEntryAtPos(pageRight, snRight,
+					attr,
+					curKey, curKeyLen,
+					curRid, curDup,
+					0, 0);
+			++snRight;
+		}
+		if (rc != SUCC) {
+			cerr << "IndexManager::splitPage: insertEntryAtPos error " << rc << endl;
+			return rc;
+		}
+	}
+
+	if (!isInserted) {
+		rc = insertEntryAtPos(pageRight, snRight,
+				attr,
+				key, keyLen,
+				rid, false,
+				0, 0);
+		if (rc != SUCC) {
+			cerr << "IndexManager::splitPage: insertEntryAtPos error " << rc << endl;
+			return rc;
+		}
+	}
+
+	// copy the key of the right page at the top
+	keyLen = getKeySize(attr, pageRight);
+	memcpy(keyCopiedUp, pageRight, keyLen);
+
+	return SUCC;
+}
+RC IndexManager::splitPageNonLeaf(void *oldPage,
+		  void *pageLeft, void *pageRight,
+		  const Attribute &attr,
+		  const void *key, const PageNum &nextPageNum,
+		  void *keyMovedUp) {
+	RC rc;
+	setPageEmpty(pageLeft);
+	setPageEmpty(pageRight);
+	setPageLeaf(pageLeft, CONST_NOT_LEAF);
+	setPageLeaf(pageRight, CONST_NOT_LEAF);
+	int keyLen = getKeySize(attr, key);
+	// get the total slot number
+	SlotNum totalSlotNum = getSlotNum(oldPage);
+	// split the entry
+	SlotNum snLeft(1), snRight(1), halfSN(totalSlotNum/2);
+	bool isInserted = false;
+
+	// random rid
+	RID rid; rid.pageNum = -1, rid.slotNum = -1;
+	PageNum prevPageNum = *((PageNum *)oldPage);
+
+	for (SlotNum sn = 1; sn < halfSN; ++sn) {
+		// get index dir
+		IndexDir indexDir;
+		rc = getIndexDir(oldPage, indexDir, sn);
+		if (rc != SUCC) {
+			cerr << "IndexManager::splitPageNonLeaf: get index dir error " << rc << endl;
+			return rc;
+		}
+
+		// get the key
+		char *curKey = (char *)oldPage + indexDir.slotOffset;
+		unsigned curKeyLen = getKeySize(attr, curKey);
+		if (compareKey(attr, key, curKey) < 0 && !isInserted) {
+			isInserted = true;
+			// need to first insert the key to be inserted
+			rc = insertEntryAtPos(pageLeft, snLeft,
+					attr,
+					key, keyLen,
+					rid, false,
+					prevPageNum, nextPageNum);
+			++snLeft;
+			if (rc != SUCC) {
+				cerr << "IndexManager::splitPageNonLeaf: insertEntryAtPos error " << rc << endl;
+				return rc;
+			}
+		}
+
+		// get the next page number
+		char *p_curNextPagenum = (char *)oldPage + indexDir.slotOffset
+				+ indexDir.recordLength - sizeof(PageNum);
+		PageNum curNextPageNum = *((PageNum *)p_curNextPagenum);
+		rc = insertEntryAtPos(pageLeft, snLeft,
+				attr,
+				curKey, curKeyLen,
+				rid, false,
+				prevPageNum,curNextPageNum);
+		++snLeft;
+	}
+
+	// copy the moved up key
+	// get index dir
+	IndexDir indexDir;
+	rc = getIndexDir(oldPage, indexDir, halfSN);
+	if (rc != SUCC) {
+		cerr << "IndexManager::splitPageNonLeaf: get index dir error " << rc << endl;
+		return rc;
+	}
+	// copy the moved up key
+	char *curKey = (char *)oldPage + indexDir.slotOffset;
+	unsigned curKeyLen = getKeySize(attr, curKey);
+	bool insetedKeyMovedUp = false;
+	if (compareKey(attr, key, curKey) < 0 && !isInserted) {
+		isInserted = true;
+		unsigned keyLen = getKeySize(attr, key);
+		memcpy(keyMovedUp, key, keyLen);
+		halfSN--; // do not move up the halfSN-th element
+		prevPageNum = nextPageNum;
+		insetedKeyMovedUp = true; // if the inserted key is moved up
+		// the previous page num is different
+	} else {
+		memcpy(keyMovedUp, curKey, curKeyLen);
+	}
+
+	// copy the right page
+	for (SlotNum sn = halfSN+1; sn <= totalSlotNum; ++sn) {
+		// get index dir
+		IndexDir indexDir;
+		rc = getIndexDir(oldPage, indexDir, sn);
+		if (rc != SUCC) {
+			cerr << "IndexManager::splitPageNonLeaf: get index dir error " << rc << endl;
+			return rc;
+		}
+
+		// get the key
+		char *curKey = (char *)oldPage + indexDir.slotOffset;
+		unsigned curKeyLen = getKeySize(attr, curKey);
+		char *curPrevPageNum = curKey - sizeof(PageNum);
+		if (!insetedKeyMovedUp)
+			prevPageNum = *((PageNum *)curPrevPageNum);
+		if (compareKey(attr, key, curKey) < 0 && !isInserted) {
+			isInserted = true;
+			// need to first insert the key to be inserted
+			rc = insertEntryAtPos(pageRight, snRight,
+					attr,
+					key, keyLen,
+					rid, false,
+					prevPageNum, nextPageNum);
+			++snRight;
+			if (rc != SUCC) {
+				cerr << "IndexManager::splitPageNonLeaf: insertEntryAtPos error " << rc << endl;
+				return rc;
+			}
+		}
+
+		// get the next page number
+		char *p_curNextPagenum = (char *)oldPage + indexDir.slotOffset
+				+ indexDir.recordLength - sizeof(PageNum);
+		PageNum curNextPageNum = *((PageNum *)p_curNextPagenum);
+		rc = insertEntryAtPos(pageRight, snRight,
+				attr,
+				curKey, curKeyLen,
+				rid, false,
+				prevPageNum,curNextPageNum);
+		++snRight;
+	}
+
+	if (!isInserted) {
+		rc = insertEntryAtPos(pageRight, snRight,
+				attr,
+				key, keyLen,
+				rid, false,
+				prevPageNum, nextPageNum);
+		if (rc != SUCC) {
+			cerr << "IndexManager::splitPage: insertEntryAtPos error " << rc << endl;
+			return rc;
+		}
+	}
+	return SUCC;
 }
 RC IndexManager::mergePage(void *srcPage, void *destPage,
 		const Attribute &attr) {
@@ -170,7 +406,7 @@ void IndexManager::setPageEmpty(void *page) {
 	setFreeSpaceStartPoint(page, page);
 	setNextPageNum(page, 0);
 	setPrevPageNum(page, 0);
-	setPageLeaf(page, NOT_LEAF);
+	setPageLeaf(page, CONST_NOT_LEAF);
 	setSlotNum(page, 0);
 }
 
@@ -215,7 +451,7 @@ IsLeaf IndexManager::isPageLeaf(const void *page) {
 	char *data = (char *)page + PAGE_SIZE
 			- sizeof(Offset)
 			- sizeof(IsLeaf);
-	IsLeaf isLeaf(NOT_LEAF);
+	IsLeaf isLeaf(CONST_NOT_LEAF);
 	memcpy(&isLeaf, data, sizeof(IsLeaf));
 	return isLeaf;
 }
@@ -323,7 +559,8 @@ int IndexManager::getKeySize(const Attribute &attr, const void *key) {
 RC IndexManager::insertEntry(const PageNum &pageNum,
 		FileHandle &fileHandle,
 		const Attribute &attribute,
-		const void *key, const RID &rid) {
+		const void *key, const RID &rid,
+		void *copiedUpKey, bool &copiedUp) {
 // TODO
 	RC rc;
 	SpaceManager *sm = SpaceManager::instance();
@@ -334,7 +571,7 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 		return rc;
 	}
 	IsLeaf pageType = isPageLeaf(block);
-	if (pageType == IS_DUP_PAGE) {
+	if (pageType == CONST_IS_DUP_PAGE) {
 		cerr << "IndexManager::insertEntry: read dup page " << IX_READ_DUP_PAGE << endl;
 		return IX_READ_DUP_PAGE;
 	}
@@ -363,7 +600,7 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 		setFreeSpaceStartPoint(block, data);
 
 		// set page type as leaf
-		setPageLeaf(block, IS_LEAF);
+		setPageLeaf(block, CONST_IS_LEAF);
 
 		// write disk
 		rc = fileHandle.writePage(pageNum, block);
@@ -387,7 +624,7 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 	}
 	char *data = block + indexDir.slotOffset;
 
-	if (pageType == IS_LEAF) {
+	if (pageType == CONST_IS_LEAF) {
 		if (rc_search == IX_SEARCH_HIT) {
 			Dup isDup;
 			memcpy(&isDup,
@@ -445,22 +682,35 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 				cerr << "IndexManager::insertEntry: write page error 1 " << rc << endl;
 				return rc;
 			}
-		} else {
+		} else { // still in the leaf
 			// not hit, need to insert
+
+			// first: need to see if the page fits the entry
 			int keyLen = getKeySize(attribute, key);
-			// first look at the page
-			rc = insertEntryAtPos(block, slotNum, attribute,
-					key, keyLen, rid, false, 0, 0);
-			if (rc != SUCC) {
-				cerr << "IndexManager::insertEntry: insert entry error 1 " << rc << endl;
-				return rc;
-			}
-			// TODO split
-			// write to the page
-			rc = fileHandle.writePage(pageNum, block);
-			if (rc != SUCC) {
-				cerr << "IndexManager::insertEntry: write page error 2 " << rc << endl;
-				return rc;
+			int spaceNeeded = keyLen + sizeof(RID) + sizeof(Dup);
+			int spaceAvailable = getFreeSpaceSize(block);
+			if (spaceAvailable >= spaceNeeded) {
+				// just insert, that page fits
+				// make copiedUp false as it just fits, no need to split
+				copiedUp = false;
+
+				rc = insertEntryAtPos(block, slotNum, attribute,
+						key, keyLen, rid, false, 0, 0);
+				if (rc != SUCC) {
+					cerr << "IndexManager::insertEntry: insert entry error 1 " << rc << endl;
+					return rc;
+				}
+				// write to the page
+				rc = fileHandle.writePage(pageNum, block);
+				if (rc != SUCC) {
+					cerr << "IndexManager::insertEntry: write page error 2 " << rc << endl;
+					return rc;
+				}
+			} else {
+				// the page does not fit
+				// must split
+				// TODO split
+
 			}
 		}
 	} else {
@@ -481,7 +731,8 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 		memcpy(&nextPageNum, data, sizeof(PageNum));
 		rc = insertEntry(nextPageNum,
 				fileHandle,
-				attribute, key, rid);
+				attribute, key, rid,
+				copiedUpKey, copiedUp);
 		if (rc != SUCC) {
 			cerr << "IndexManager::insertEntry: next insert index entry error " << rc << endl;
 			return rc;
@@ -822,11 +1073,11 @@ int IndexManager::compareKey(const Attribute &attr,
 // for debug only
 void IndexManager::printPage(const void *page, const Attribute &attr) {
 	IsLeaf isLeaf = isPageLeaf(page);
-	if (isLeaf == IS_LEAF)
+	if (isLeaf == CONST_IS_LEAF)
 		printLeafPage(page, attr);
-	else if (isLeaf == NOT_LEAF)
+	else if (isLeaf == CONST_NOT_LEAF)
 		printNonLeafPage(page, attr);
-	else if (isLeaf == IS_DUP_PAGE)
+	else if (isLeaf == CONST_IS_DUP_PAGE)
 		printDupPage(page);
 }
 
@@ -869,6 +1120,7 @@ void IndexManager::printNonLeafPage(const void *page, const Attribute &attr) {
 			"\tNext Page: " << getNextPageNum(page) << endl;
 	SlotNum totalSlotNum = getSlotNum(page);
 	cout << "Total # of Entries: " << totalSlotNum << endl;
+	cout << "Previous page number: " << *((PageNum *)page) << endl;
 	cout << "-------------------------------------------------" << endl;
 	cout << "No.\toffset\tlength\tkey\tnext page number" << endl;
 	for (SlotNum sn = 1; sn <= totalSlotNum; ++sn) {
@@ -996,7 +1248,7 @@ RC SpaceManager::initIndexFile(const string &indexFileName) {
 			return rc;
 		}
 		IsLeaf isDupPage = ix->isPageLeaf(page);
-		if(isDupPage == IS_DUP_PAGE) {
+		if(isDupPage == CONST_IS_DUP_PAGE) {
 			int availSpace = ix->getFreeSpaceSize(page);
 			if (availSpace > DUP_RECORD_SIZE) {
 				itrDup->second.insert(pn);
@@ -1064,7 +1316,7 @@ RC SpaceManager::insertDupRecord(FileHandle &fileHandle,
 	} while (spaceAvailable < DUP_RECORD_SIZE);
 
 	// set the page to be dup
-	ix->setPageLeaf(page, IS_DUP_PAGE);
+	ix->setPageLeaf(page, CONST_IS_DUP_PAGE);
 
 	SlotNum totalSlotNum = ix->getSlotNum(page);
 	SlotNum slotNum2Insert = totalSlotNum+1;

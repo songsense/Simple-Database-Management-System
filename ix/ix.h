@@ -54,9 +54,9 @@ const PageNum DUP_PAGENUM_END = -1;
 // define the free space length
 typedef unsigned long Address;
 typedef char IsLeaf;
-const char NOT_LEAF = 0;
-const char IS_LEAF = 1;
-const char IS_DUP_PAGE = 2;
+const char CONST_NOT_LEAF = 0;
+const char CONST_IS_LEAF = 1;
+const char CONST_IS_DUP_PAGE = 2;
 const int DUP_RECORD_SIZE = sizeof(RID)*2;
 
 // define the begin/end of page
@@ -150,7 +150,8 @@ class IndexManager {
   RC insertEntry(const PageNum &pageNum,
 		  FileHandle &fileHandle,
 		  const Attribute &attribute,
-		  const void *key, const RID &rid);
+		  const void *key, const RID &rid,
+		  void *copiedUpKey, bool &copiedUp);
   // Delete index entry
   RC deleteEntry(const PageNum &pageNum,
 		  FileHandle &fileHandle,
@@ -175,9 +176,16 @@ class IndexManager {
   /*
    * Split/merge pages
    */
-  RC splitPage(void *oldPage, void *newPage,
+  RC splitPageLeaf(void *oldPage,
+		  void *pageLeft, void *pageRight,
 		  const Attribute &attr,
-		  IsLeaf &isLeaf, void *keyCopiedUp);
+		  const void *key, const RID &rid,
+		  void *keyCopiedUp);
+  RC splitPageNonLeaf(void *oldPage,
+		  void *pageLeft, void *pageRight,
+		  const Attribute &attr,
+		  const void *key, const PageNum &nextPageNum,
+		  void *keMovedUp);
   RC mergePage(void *srcPage, void *destPage,
 		  const Attribute &attr);
 
