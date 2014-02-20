@@ -135,7 +135,7 @@ void basic_test_search_float() {
 	int indexNum(100);
 	float salaryVal(20.0);
 	for (int i = 0; i < indexNum; ++i) {
-		salaryVal = 5000.0 + (float(rand()))/RAND_MAX*1000.0;
+		salaryVal = 170.0 + (float(rand()))/RAND_MAX*10.0;
 		memcpy(key, &salaryVal, sizeof(float));
 		ix->binarySearchEntry(page, attr, key, slotNum);
 
@@ -159,7 +159,7 @@ void basic_test_search_string() {
 	ix->setPageEmpty(page);
 	ix->setPageLeaf(page, CONST_IS_LEAF);
 	// prepare data
-	char key[sizeof(float)];
+	char key[PAGE_SIZE];
 	SlotNum slotNum(1);
 	RID	rid;
 	rid.pageNum = 0, rid.slotNum = 1;
@@ -330,8 +330,8 @@ void basic_test_space_manager_2() {
 	cout << "******************end space manager test 2" << endl;
 }
 
-void basic_test_split() {
-	cout << "******************begin split test" << endl;
+void basic_test_split_int() {
+	cout << "******************begin split test int" << endl;
 
 	RC rc;
 	SpaceManager *sm = SpaceManager::instance();
@@ -405,10 +405,191 @@ void basic_test_split() {
 	ix->printPage(pageLeft, attr);
 	ix->printPage(pageRight, attr);
 
-	//TODO
-	cout << "******************end split test" << endl;
+	cout << "******************end split test int" << endl;
 }
 
+void basic_test_split_float() {
+	cout << "******************begin split test float" << endl;
+
+	RC rc;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 4;
+	attr.name = "height";
+	attr.type = TypeReal;
+	// prepare data
+	float key = 170.0;
+	// test data size
+	int numTuple = 10;
+
+	// test leaf page
+	char leafPage[PAGE_SIZE];
+	ix->setPageEmpty(leafPage);
+	ix->setPageLeaf(leafPage, CONST_IS_LEAF);
+	RID rid;
+	for (int i = 0; i < numTuple; ++i) {
+		key = 170.0 + (double)rand()/RAND_MAX * 10;
+		rid.pageNum = i;
+		rid.slotNum = i+1;
+		SlotNum slotToInsert;
+		rc = ix->binarySearchEntry(leafPage, attr, &key, slotToInsert);
+		rc = ix->insertEntryAtPos(leafPage, slotToInsert, attr,
+				&key, sizeof(float),
+				rid, true, 0, 0);
+		assert(rc == success);
+	}
+
+	cout << "now split the leaf page into two" << endl;
+	char pageLeft[PAGE_SIZE];
+	char pageRight[PAGE_SIZE];
+	float keyCopiedUp;
+	key = 169.0;
+	rid.pageNum = 123, rid.slotNum = 123;
+	rc = ix->splitPageLeaf(leafPage, pageLeft, pageRight, attr,
+			&key, rid, &keyCopiedUp);
+	assert(rc == success);
+	cout << "key copied up is " << keyCopiedUp << endl;
+
+	ix->printPage(pageLeft, attr);
+	ix->printPage(pageRight, attr);
+
+	char nonLeafPage[PAGE_SIZE];
+	ix->setPageEmpty(nonLeafPage);
+	ix->setPageLeaf(nonLeafPage, CONST_NOT_LEAF);
+	PageNum prevPageNum(0), nextPageNum(1);
+	for (int i = 0; i < numTuple; ++i) {
+		key = 170.0 + (double)rand()/RAND_MAX * 10;
+		nextPageNum = i+1;
+		SlotNum slotToInsert;
+		rc = ix->binarySearchEntry(nonLeafPage, attr, &key, slotToInsert);
+		rc = ix->insertEntryAtPos(nonLeafPage, slotToInsert, attr,
+				&key, sizeof(float),
+				rid, true, prevPageNum, nextPageNum);
+		assert(rc == success);
+	}
+
+	cout << "now split the nonleaf page into two" << endl;
+	ix->setPageEmpty(pageLeft);
+	ix->setPageEmpty(pageRight);
+	ix->setPageLeaf(pageLeft, CONST_NOT_LEAF);
+	ix->setPageLeaf(pageRight, CONST_NOT_LEAF);
+	float keyMovedUp;
+	key = 182;
+	nextPageNum = 15;
+	rc = ix->splitPageNonLeaf(nonLeafPage, pageLeft, pageRight,
+			attr, &key, nextPageNum, &keyMovedUp);
+	assert(rc == success);
+	cout << "key moved up is " << keyMovedUp << endl;
+	ix->printPage(pageLeft, attr);
+	ix->printPage(pageRight, attr);
+
+	cout << "******************end split test float" << endl;
+}
+
+void basic_test_split_string() {
+	cout << "******************begin split test string" << endl;
+
+	RC rc;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 35;
+	attr.name = "name";
+	attr.type = TypeVarChar;
+	// prepare data
+	string str;
+	char key[PAGE_SIZE];
+	// test data size
+	int numTuple = 10;
+
+	// test leaf page
+	char leafPage[PAGE_SIZE];
+	ix->setPageEmpty(leafPage);
+	ix->setPageLeaf(leafPage, CONST_IS_LEAF);
+	RID rid;
+	cout << "insert data to the leaf page"<< endl;
+	for (int i = 0; i < numTuple; ++i) {
+		int strLen = rand() % 10 + 5;
+		str.clear();
+		for (int j = 0; j < strLen; ++j) {
+			str.push_back('a' + (rand()%26));
+		}
+		prepareKey(key, str);
+		int keyLen = ix->getKeySize(attr, key);
+		rid.pageNum = i;
+		rid.slotNum = i+1;
+		SlotNum slotToInsert;
+		rc = ix->binarySearchEntry(leafPage, attr, key, slotToInsert);
+		rc = ix->insertEntryAtPos(leafPage, slotToInsert, attr,
+				key, keyLen,
+				rid, true, 0, 0);
+		assert(rc == success);
+	}
+
+	cout << "now split the leaf page into two" << endl;
+	char pageLeft[PAGE_SIZE];
+	char pageRight[PAGE_SIZE];
+	char keyCopiedUp[PAGE_SIZE];
+	prepareKey(key, "helen");
+	rid.pageNum = 123, rid.slotNum = 123;
+	rc = ix->splitPageLeaf(leafPage, pageLeft, pageRight, attr,
+			key, rid, keyCopiedUp);
+	assert(rc == success);
+	cout << "key copied up is ";
+	ix->printKey(attr,keyCopiedUp);
+	cout << endl;
+
+	ix->printPage(pageLeft, attr);
+	ix->printPage(pageRight, attr);
+
+	char nonLeafPage[PAGE_SIZE];
+	ix->setPageEmpty(nonLeafPage);
+	ix->setPageLeaf(nonLeafPage, CONST_NOT_LEAF);
+	PageNum prevPageNum(0), nextPageNum(1);
+	cout << "insert data to the non-leaf page"<< endl;
+	for (int i = 0; i < numTuple; ++i) {
+		int strLen = rand() % 10 + 5;
+		str.clear();
+		for (int j = 0; j < strLen; ++j) {
+			str.push_back('a' + (rand()%26));
+		}
+		prepareKey(key, str);
+		int keyLen = ix->getKeySize(attr, key);
+		nextPageNum = i+1;
+		SlotNum slotToInsert;
+		rc = ix->binarySearchEntry(nonLeafPage, attr, key, slotToInsert);
+		rc = ix->insertEntryAtPos(nonLeafPage, slotToInsert, attr,
+				key, keyLen,
+				rid, true, prevPageNum, nextPageNum);
+		assert(rc == success);
+	}
+
+	cout << "now split the nonleaf page into two" << endl;
+	ix->setPageEmpty(pageLeft);
+	ix->setPageEmpty(pageRight);
+	ix->setPageLeaf(pageLeft, CONST_NOT_LEAF);
+	ix->setPageLeaf(pageRight, CONST_NOT_LEAF);
+	char keyMovedUp[PAGE_SIZE];
+	prepareKey(key, "helen");
+	nextPageNum = 15;
+	rc = ix->splitPageNonLeaf(nonLeafPage, pageLeft, pageRight,
+			attr, key, nextPageNum, keyMovedUp);
+	assert(rc == success);
+	cout << "key moved up is ";
+	ix->printKey(attr, keyMovedUp);
+	cout << endl;
+	ix->printPage(pageLeft, attr);
+	ix->printPage(pageRight, attr);
+
+	cout << "******************end split test string" << endl;
+}
 
 void basic_test_insert() {
 	cout << "******************begin insert test" << endl;
@@ -495,8 +676,11 @@ int main()
 	basic_test_space_manager_2();
 
 	basic_test_insert();
+
+	basic_test_split_int();
+	basic_test_split_float();
 	*/
-	basic_test_split();
+	basic_test_split_string();
 	cout << "Finish all tests" << endl;
 	return 0;
 }

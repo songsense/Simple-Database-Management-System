@@ -21,9 +21,8 @@
 #define IX_SEARCH_LOWER_BOUND 70
 #define IX_SEARCH_UPPER_BOUND 71
 #define IX_SEARCH_HIT 72
-#define IX_SEARCH_ABOVE 73
-#define IX_SEARCH_BELOW 74
-#define IX_FAILTO_ALLOCATE_PAGE 75
+#define IX_SEARCH_HIT_MED 73
+#define IX_FAILTO_ALLOCATE_PAGE 74
 
 // define duplicate flag
 typedef bool Dup;

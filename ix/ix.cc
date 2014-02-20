@@ -717,13 +717,12 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 		// continue search until reach a leaf
 		// |p|key|p|key|p|key|p|
 		if (rc_search == IX_SEARCH_LOWER_BOUND ||
-				rc_search == IX_SEARCH_ABOVE) {
+				rc_search == IX_SEARCH_HIT_MED) {
 			// look at left
 			data -= sizeof(PageNum);
 
 		} else if (rc_search == IX_SEARCH_UPPER_BOUND ||
-				rc_search == IX_SEARCH_HIT ||
-				rc_search == IX_SEARCH_BELOW) {
+				rc_search == IX_SEARCH_HIT) {
 			// look at right
 			data += (indexDir.recordLength - sizeof(PageNum));
 		}
@@ -760,51 +759,86 @@ RC IndexManager::binarySearchEntry(const void *page,
 	SlotNum beg(1), end(totalSlotNum);
 	SlotNum med(beg);
 
+
+	if (totalSlotNum == 0) {
+		slotNum = 1;
+		return IX_SEARCH_LOWER_BOUND;
+	}
+
 	IndexDir indexDir;
-	while (beg <= end) {
-		med = beg + (end-beg)/2;
+	// indexKey >= key (target)
+	rc = getIndexDir(page, indexDir, 1);
+	if (rc != SUCC) {
+		cerr << "binarySearchEntry: error set slot dir " << rc << endl;
+		return rc;
+	}
+	char *indexKey = (char *)page + indexDir.slotOffset;
+	int compResult = compareKey(attr, indexKey, key);
+	if (compResult == 0) {
+		slotNum = 1;
+		return IX_SEARCH_HIT;
+	}
+	else if (compResult > 0) {
+		slotNum = 1;
+	    return IX_SEARCH_LOWER_BOUND;
+	}
+
+	// indexKey < key (target)
+	rc = getIndexDir(page, indexDir, totalSlotNum);
+	if (rc != SUCC) {
+		cerr << "binarySearchEntry: error set slot dir " << rc << endl;
+		return rc;
+	}
+	indexKey = (char *)page + indexDir.slotOffset;
+	compResult = compareKey(attr, indexKey, key);
+	if (compResult == 0) {
+		slotNum = totalSlotNum;
+		return IX_SEARCH_HIT;
+	}
+	if (compResult < 0) {
+		slotNum = totalSlotNum + 1;
+		return IX_SEARCH_UPPER_BOUND;
+	}
+
+	while (true) {
+		int cmpRltLeft(0), cmpRltRight(0);
+		med = beg + (end - beg) / 2;
+		// hit case
 		rc = getIndexDir(page, indexDir, med);
 		if (rc != SUCC) {
 			cerr << "binarySearchEntry: error set slot dir " << rc << endl;
 			return rc;
 		}
-		char *indexKey = (char *)page + indexDir.slotOffset;
-		int compResult = compareKey(attr, key, indexKey);
-		if (compResult == 0) {
+		indexKey = (char *)page + indexDir.slotOffset;
+		cmpRltLeft = compareKey(attr, indexKey, key);
+		if (cmpRltLeft == 0) {
 			slotNum = med;
 			return IX_SEARCH_HIT;
-		} else if (compResult > 0) {
-			beg = med+1;
+		}
+
+		if (med > 1) {
+			rc = getIndexDir(page, indexDir, med - 1);
+			if (rc != SUCC) {
+				cerr << "binarySearchEntry: error set slot dir " << rc << endl;
+				return rc;
+			}
+			indexKey = (char *)page + indexDir.slotOffset;
+			cmpRltRight = compareKey(attr, key, indexKey);
+		} else { // compare with an infinity small number
+			cmpRltRight = 1;
+		}
+
+		// A[mid] >= target && target > A[mid - 1]
+		if (cmpRltLeft > 0 && cmpRltRight > 0) {
+			slotNum = med;
+			return IX_SEARCH_HIT_MED;
+		} else if (cmpRltLeft > 0) {
+			end = med - 1;
 		} else {
-			end = med-1;
+			beg = med + 1;
 		}
 	}
-	if (beg > totalSlotNum) {
-		slotNum = totalSlotNum+1;
-		return IX_SEARCH_UPPER_BOUND;
-	} else if (end < 1) {
-		slotNum = 1;
-		return IX_SEARCH_LOWER_BOUND;
-	} else {
-		med = beg + (end-beg)/2;
-		rc = getIndexDir(page, indexDir, med);
-		if (rc != SUCC) {
-			cerr << "binarySearchEntry: error get slot dir " << rc << endl;
-			return rc;
-		}
-		char *indexKey = (char *)page + indexDir.slotOffset;
-		int compResult = compareKey(attr, key, indexKey);
-		if (compResult == 0) {
-			slotNum = med;
-			return IX_SEARCH_HIT;
-		} else if (compResult > 0) {
-			slotNum = med+1;
-			return IX_SEARCH_ABOVE;
-		} else {
-			slotNum = med;
-			return IX_SEARCH_BELOW;
-		}
-	}
+
 	return SUCC;
 }
 // insert an entry into page at pos n
@@ -820,7 +854,6 @@ RC IndexManager::insertEntryAtPos(void *page, const SlotNum &slotNum,
 				<< IX_SLOT_DIR_LESS_ZERO << endl;
 		return IX_SLOT_DIR_LESS_ZERO;
 	}
-
 	RC rc;
 	IsLeaf isLeaf = isPageLeaf(page);
 	int spaceNeeded = keyLen + sizeof(IndexDir);
@@ -1044,12 +1077,20 @@ int IndexManager::compareKey(const Attribute &attr,
 		  const void *lhs, const void *rhs) {
 	char *str_lhs(NULL), *str_rhs(NULL);
 	int result(0);
+	float dResult(0.0);
 	switch(attr.type) {
 	case TypeInt:
 		return *((int *)lhs) - *((int *)rhs);
 		break;
 	case TypeReal:
-		return *((float *)lhs) - *((float *)rhs);
+		dResult = *((float *)lhs) - *((float *)rhs);
+		if (dResult > 0)
+			return 1;
+		else if (dResult < 0)
+			return -1;
+		else
+			return 0;
+		return result;
 		break;
 	case TypeVarChar:
 		// left hand size string
