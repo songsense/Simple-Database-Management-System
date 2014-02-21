@@ -154,20 +154,25 @@ RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute,
 				cerr << "IndexManager::insertEntry: getEmptyPage error at left page " << rc << endl;
 				return rc;
 			}
-			// write the new page back
-			rc = fileHandle.writePage(newLeftPageNum, leftPage);
-			if (rc != SUCC) {
-				cerr << "IndexManager::insertEntry: writePage error " << rc << endl;
-				return rc;
-			}
-			// get a new page for left page
+			// get a new page for right page
 			PageNum newRightPageNum;
 			rc = sm->getEmptyPage(fileHandle, newRightPageNum);
 			if (rc != SUCC) {
 				cerr << "IndexManager::insertEntry: getEmptyPage error at left page " << rc << endl;
 				return rc;
 			}
-			// write the new page back
+
+			setNextPageNum(leftPage, newRightPageNum);
+			setPrevPageNum(rightPage, newLeftPageNum);
+
+			// write the new left page back
+			rc = fileHandle.writePage(newLeftPageNum, leftPage);
+			if (rc != SUCC) {
+				cerr << "IndexManager::insertEntry: writePage error " << rc << endl;
+				return rc;
+			}
+
+			// write the new right page back
 			rc = fileHandle.writePage(newRightPageNum, rightPage);
 			if (rc != SUCC) {
 				cerr << "IndexManager::insertEntry: writePage error " << rc << endl;
@@ -198,17 +203,37 @@ RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute,
 	else if (copiedUp && isLeaf == CONST_IS_LEAF) {
 		// get a new page for left page
 		SpaceManager *sm = SpaceManager::instance();
+		char leftPage[PAGE_SIZE];
+		char rightPage[PAGE_SIZE];
 		PageNum newPageNum;
 		rc = sm->getEmptyPage(fileHandle, newPageNum);
 		if (rc != SUCC) {
 			cerr << "IndexManager::insertEntry: getEmptyPage error " << rc << endl;
 			return rc;
 		}
+		// copy root page to the left page
+		memcpy(leftPage, rootPage, PAGE_SIZE);
 
-		// write the new page back
-		rc = fileHandle.writePage(newPageNum, rootPage);
+		rc = fileHandle.readPage(copiedUpNextPageNum, rightPage);
 		if (rc != SUCC) {
-			cerr << "IndexManager::insertEntry: writePage error " << rc << endl;
+			cerr << "IndexManager::insertEntry: readPage (right page) error " << rc << endl;
+			return rc;
+		}
+
+		// set the next page number
+		setPrevPageNum(rightPage, newPageNum);
+		setNextPageNum(leftPage, copiedUpNextPageNum);
+
+		// write the new left page back
+		rc = fileHandle.writePage(newPageNum, leftPage);
+		if (rc != SUCC) {
+			cerr << "IndexManager::insertEntry: writePage (left page) error " << rc << endl;
+			return rc;
+		}
+		// write the new right page back
+		rc = fileHandle.writePage(copiedUpNextPageNum, rightPage);
+		if (rc != SUCC) {
+			cerr << "IndexManager::insertEntry: writePage (right page) error " << rc << endl;
 			return rc;
 		}
 
@@ -852,6 +877,10 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 					cerr << "IndexManager::insertEntry: getEmptyPage error " << rc << endl;
 					return rc;
 				}
+				PageNum origNextPageNum = getNextPageNum(page);
+				PageNum origPrevPageNum = getPrevPageNum(page);
+				setNextPageNum(rightPage, origNextPageNum);
+				setPrevPageNum(rightPage, pageNum);
 				// write back to the disk
 				rc = fileHandle.writePage(copiedUpNextPageNum, rightPage);
 				if (rc != SUCC) {
@@ -859,10 +888,10 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 					return rc;
 				}
 
-				// copy left page to original page
-				memcpy(page, leftPage, PAGE_SIZE);
+				setNextPageNum(leftPage, copiedUpNextPageNum);
+				setPrevPageNum(leftPage, origPrevPageNum);
 				// write to the page
-				rc = fileHandle.writePage(pageNum, page);
+				rc = fileHandle.writePage(pageNum, leftPage);
 				if (rc != SUCC) {
 					cerr << "IndexManager::insertEntry: write page error 1 " << rc << endl;
 					return rc;
@@ -944,6 +973,9 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 					cerr << "IndexManager::insertEntry: splitPageLeaf error " << rc << endl;
 					return rc;
 				}
+				// get the prev and next page number
+				PageNum origNextPageNum = getNextPageNum(page);
+				PageNum origPrevPageNum = getPrevPageNum(page);
 
 				// get an empty page to hold the right page
 				rc = sm->getEmptyPage(fileHandle, movedUpNextPageNum);
@@ -951,26 +983,19 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 					cerr << "IndexManager::insertEntry: getEmptyPage error " << rc << endl;
 					return rc;
 				}
-				// read the page just created
-				char newPage[PAGE_SIZE];
-				rc = fileHandle.readPage(movedUpNextPageNum, newPage);
-				if (rc != SUCC) {
-					cerr << "IndexManager::insertEntry: readPage error " << rc << endl;
-					return rc;
-				}
-				// copy right page to the new page
-				memcpy(newPage, rightPage, PAGE_SIZE);
-				// write back to the disk
-				rc = fileHandle.writePage(movedUpNextPageNum, newPage);
+				setNextPageNum(rightPage, origNextPageNum);
+				setPrevPageNum(rightPage, pageNum);
+				// write the right page back to the disk
+				rc = fileHandle.writePage(movedUpNextPageNum, rightPage);
 				if (rc != SUCC) {
 					cerr << "IndexManager::insertEntry: writePage error " << rc << endl;
 					return rc;
 				}
 
-				// copy left page to original page
-				memcpy(page, leftPage, PAGE_SIZE);
-				// write to the page
-				rc = fileHandle.writePage(pageNum, page);
+				setNextPageNum(leftPage, movedUpNextPageNum);
+				setPrevPageNum(leftPage, origPrevPageNum);
+				// write to the left page
+				rc = fileHandle.writePage(pageNum, leftPage);
 				if (rc != SUCC) {
 					cerr << "IndexManager::insertEntry: write page error 1 " << rc << endl;
 					return rc;

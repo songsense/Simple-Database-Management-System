@@ -33,7 +33,7 @@ typedef int RC;
 
 typedef unsigned PageNum;
 
-#define PAGE_SIZE 400
+#define PAGE_SIZE 200
 #define PAGE_ALMOST_FULL_RATIO	5	// defines the ratio that a page is almost full
 #define PAGE_LEVEL 4 				// defines # of lists for different degrees of free space
 #define MAX_PAGE_IN_MEM 1024		// defines the maximum # of pages opened in a file 262144

@@ -684,7 +684,7 @@ void basic_test_insert_int() {
 	rc = ix->openFile(indexFileName, fileHandle);
 	assert(rc == success);
 
-	int numTuple = 50;
+	int numTuple = 100;
 
 	RID rid;
 	for (int i = 0; i < numTuple; ++i) {
@@ -694,10 +694,6 @@ void basic_test_insert_int() {
 		rc = ix->insertEntry(fileHandle, attr, &key,rid);
 		assert(rc == success);
 	}
-
-	key = 139;
-	rid.pageNum = 1111, rid.slotNum = 11;
-	rc = ix->insertEntry(fileHandle, attr, &key, rid);
 
 	char page[PAGE_SIZE];
 	PageNum totalPageNum = fileHandle.getNumberOfPages();
