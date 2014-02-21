@@ -123,7 +123,7 @@ RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute,
 		int spaceNeeded = copiedUpKeyLen + sizeof(PageNum) + sizeof(IndexDir);
 		int spaceAvailable = getFreeSpaceSize(rootPage);
 
-		if (spaceNeeded > spaceAvailable) {
+		if (spaceNeeded <= spaceAvailable) {
 			// just insert
 			SlotNum slotNumToInsert;
 			rc = binarySearchEntry(rootPage, attribute, copiedUpKey, slotNumToInsert);
@@ -132,6 +132,13 @@ RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute,
 					0, copiedUpNextPageNum);
 			if (rc != SUCC) {
 				cerr << "IndexManager::insertEntry: insertEntryAtPos error 1 " << rc << endl;
+				return rc;
+			}
+			spaceAvailable = getFreeSpaceSize(rootPage);
+			// write the root page back
+			rc = fileHandle.writePage(ROOT_PAGE, rootPage);
+			if (rc != SUCC) {
+				cerr << "IndexManager::insertEntry: writePage error (root page) " << rc << endl;
 				return rc;
 			}
 		} else {
@@ -186,7 +193,7 @@ RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute,
 			// insert the very first record to the root
 			int keyLen = getKeySize(attribute, movedUpKey);
 			rc = insertEntryAtPos(rootPage, 1, attribute,
-					copiedUpKey, keyLen, rid, false,
+					movedUpKey, keyLen, rid, false,
 					newLeftPageNum, newRightPageNum);
 			if (rc != SUCC) {
 				cerr << "IndexManager::insertEntry: insertEntryAtPos error " << rc << endl;
@@ -320,6 +327,10 @@ RC IndexManager::splitPageLeaf(void *oldPage,
 	int keyLen = getKeySize(attr, key);
 	// get the total slot number
 	SlotNum totalSlotNum = getSlotNum(oldPage);
+	// get prev/next page number
+	PageNum oldPrevPageNum = getPrevPageNum(oldPage);
+	PageNum oldNextPageNum = getNextPageNum(oldPage);
+
 	// split the entry
 	SlotNum snLeft(1), snRight(1), halfSN(totalSlotNum/2);
 	bool isInserted = false;
@@ -399,6 +410,9 @@ RC IndexManager::splitPageLeaf(void *oldPage,
 			return rc;
 		}
 	}
+	// set the new page's prev and next page
+	setPrevPageNum(pageLeft, oldPrevPageNum);
+	setNextPageNum(pageRight, oldNextPageNum);
 
 	// copy the key of the right page at the top
 	keyLen = getKeySize(attr, pageRight);
@@ -422,6 +436,9 @@ RC IndexManager::splitPageNonLeaf(void *oldPage,
 	// split the entry
 	SlotNum snLeft(1), snRight(1), halfSN(totalSlotNum/2);
 	bool isInserted = false;
+	// get prev/next page number
+	PageNum oldPrevPageNum = getPrevPageNum(oldPage);
+	PageNum oldNextPageNum = getNextPageNum(oldPage);
 
 	// random rid
 	RID rid; rid.pageNum = -1, rid.slotNum = -1;
@@ -544,6 +561,10 @@ RC IndexManager::splitPageNonLeaf(void *oldPage,
 			return rc;
 		}
 	}
+
+	// set the new page's prev and next page
+	setPrevPageNum(pageLeft, oldPrevPageNum);
+	setNextPageNum(pageRight, oldNextPageNum);
 	return SUCC;
 }
 RC IndexManager::mergePage(void *srcPage, void *destPage,
@@ -896,6 +917,22 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 					cerr << "IndexManager::insertEntry: write page error 1 " << rc << endl;
 					return rc;
 				}
+
+				// load next page affected, reset its page pointer
+				if (origNextPageNum != ROOT_PAGE) {
+					rc = fileHandle.readPage(origNextPageNum, rightPage);
+					if (rc != SUCC) {
+						cerr << "IndexManager::insertEntry: readPage(origNextPageNum, leftPage) error " << rc << endl;
+						return rc;
+					}
+					setPrevPageNum(rightPage, copiedUpNextPageNum);
+					// write changes
+					rc = fileHandle.writePage(origNextPageNum, rightPage);
+					if (rc != SUCC) {
+						cerr << "IndexManager::insertEntry: writePage(origNextPageNum, leftPage) error " << rc << endl;
+						return rc;
+					}
+				}
 			}
 		}
 	} else {
@@ -938,7 +975,7 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 			return rc;
 		}
 		if (copiedUp) {
-			// it's child split
+			// its child split
 			// begin insert the copied key to the nonleaf page
 			// first check the available size
 			int keyLen = getKeySize(attribute, copiedUpKey);
@@ -962,11 +999,18 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 				}
 			} else {
 				// no space for the insertion, must split again at non leaf page
+				if (pageNum == ROOT_PAGE) {
+					// the overflow page is the root page, process it outside
+					// if the page is not the root page, the left page is not copied
+					// this is the difference and reason to process root separately
+					return SUCC;
+				}
 				// split nonleaf page
 				char leftPage[PAGE_SIZE];
 				char rightPage[PAGE_SIZE];
 				char keyMovedUp[PAGE_SIZE];
 				PageNum movedUpNextPageNum;
+
 				rc = splitPageNonLeaf(page, leftPage, rightPage,
 						attribute, copiedUpKey, copiedUpNextPageNum, keyMovedUp);
 				if (rc != SUCC) {
@@ -1003,7 +1047,23 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 
 				copiedUp = true;
 				copiedUpNextPageNum = movedUpNextPageNum;
-				copyKey(keyMovedUp, copiedUpKey, attribute);
+				copyKey(copiedUpKey, keyMovedUp, attribute);
+
+				// load next page affected
+				if (origNextPageNum != ROOT_PAGE) {
+					rc = fileHandle.readPage(origNextPageNum, rightPage);
+					if (rc != SUCC) {
+						cerr << "IndexManager::insertEntry: readPage(origNextPageNum, leftPage) error " << rc << endl;
+						return rc;
+					}
+					setPrevPageNum(rightPage, movedUpNextPageNum);
+					// write changes
+					rc = fileHandle.writePage(origNextPageNum, rightPage);
+					if (rc != SUCC) {
+						cerr << "IndexManager::insertEntry: writePage(origNextPageNum, leftPage) error " << rc << endl;
+						return rc;
+					}
+				}
 			}
 		}
 	}

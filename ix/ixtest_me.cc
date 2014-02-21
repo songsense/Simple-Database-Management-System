@@ -15,6 +15,16 @@ unsigned prepareKey(void *key, const string &str) {
 	memcpy((char *)key+sizeof(int), str.c_str(), len);
 	return len+sizeof(int);
 }
+
+string generateRandomString(int lower, int extLen) {
+	string str;
+	int strLen = rand() % extLen + lower;
+	str.clear();
+	for (int j = 0; j < strLen; ++j) {
+		str.push_back('a' + (rand()%26));
+	}
+	return str;
+}
 void basic_test() {
 	RC rc;
 	cout << "******************begin basic test" << endl;
@@ -591,76 +601,6 @@ void basic_test_split_string() {
 	cout << "******************end split test string" << endl;
 }
 
-void basic_test_insert_string() {
-	cout << "******************begin insert test string" << endl;
-	SpaceManager *sm = SpaceManager::instance();
-	IndexManager *ix = IndexManager::instance();
-	string indexFileName = "test";
-	remove(indexFileName.c_str());
-	FileHandle fileHandle;
-	Attribute attr;
-	attr.length = 35;
-	attr.name = "EmpName";
-	attr.type = TypeVarChar;
-	// prepare data
-	char key[PAGE_SIZE];
-	prepareKey(key, "Peter");
-
-	RC rc;
-
-	rc = ix->createFile(indexFileName);
-	assert(rc == success);
-	rc = sm->initIndexFile(indexFileName);
-	assert(rc == success);
-	rc = ix->openFile(indexFileName, fileHandle);
-	assert(rc == success);
-
-	RID rid;
-	rid.pageNum = 0, rid.slotNum = 1;
-	rc = ix->insertEntry(fileHandle, attr, key, rid);
-	assert(rc == success);
-
-	rid.pageNum = 0, rid.slotNum = 2;
-	prepareKey(key, "Lucy");
-	rc = ix->insertEntry(fileHandle, attr, key, rid);
-	assert(rc == success);
-
-	rid.pageNum = 0, rid.slotNum = 3;
-	prepareKey(key, "Emily");
-	rc = ix->insertEntry(fileHandle, attr, key, rid);
-	assert(rc == success);
-
-	rid.pageNum = 0, rid.slotNum = 4;
-	prepareKey(key, "Emily");
-	rc = ix->insertEntry(fileHandle, attr, key, rid);
-	assert(rc == success);
-
-	rid.pageNum = 0, rid.slotNum = 5;
-	prepareKey(key, "Emily");
-	rc = ix->insertEntry(fileHandle, attr, key, rid);
-	assert(rc == success);
-
-	rid.pageNum = 0, rid.slotNum = 6;
-	prepareKey(key, "Lucy");
-	rc = ix->insertEntry(fileHandle, attr, key, rid);
-	assert(rc == success);
-
-
-	char page[PAGE_SIZE];
-	PageNum totalPageNum = fileHandle.getNumberOfPages();
-	totalPageNum = fileHandle.getNumberOfPages();
-	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
-		rc = fileHandle.readPage(pn, page);
-		assert(rc == success);
-		ix->printPage(page, attr);
-	}
-
-	rc = ix->closeFile(fileHandle);
-	assert(rc == success);
-
-	cout << "******************end insert test string" << endl;
-}
-
 void basic_test_insert_int() {
 	cout << "******************begin insert test int" << endl;
 	SpaceManager *sm = SpaceManager::instance();
@@ -689,8 +629,8 @@ void basic_test_insert_int() {
 	RID rid;
 	for (int i = 0; i < numTuple; ++i) {
 		key = i;
-		rid.pageNum = i;
-		rid.slotNum = 2*i;
+		rid.pageNum = key;
+		rid.slotNum = key;
 		rc = ix->insertEntry(fileHandle, attr, &key,rid);
 		assert(rc == success);
 	}
@@ -711,6 +651,107 @@ void basic_test_insert_int() {
 	cout << "******************end insert test int" << endl;
 }
 
+void basic_test_insert_float() {
+	cout << "******************begin insert test float" << endl;
+
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 4;
+	attr.name = "height";
+	attr.type = TypeReal;
+	// prepare data
+	float key = 20;
+
+	RC rc;
+
+	rc = ix->createFile(indexFileName);
+	assert(rc == success);
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	int numTuple = 100;
+
+	RID rid;
+	for (int i = 0; i < numTuple; ++i) {
+		key = 170 + (double)i/numTuple;
+		rid.pageNum = i;
+		rid.slotNum = i;
+		rc = ix->insertEntry(fileHandle, attr, &key,rid);
+		assert(rc == success);
+	}
+
+	char page[PAGE_SIZE];
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		cout << "%%%%%%%%%%%%%%%%Page number " << pn << "%%%%%%%%%%%%%%%%" << endl;
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printPage(page, attr);
+	}
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+	cout << "******************end insert test float" << endl;
+}
+
+void basic_test_insert_string() {
+	cout << "******************begin insert test string" << endl;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 50;
+	attr.name = "name";
+	attr.type = TypeVarChar;
+	// prepare data
+	char key[PAGE_SIZE];
+
+	RC rc;
+
+	rc = ix->createFile(indexFileName);
+	assert(rc == success);
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	int numTuple = 100;
+
+	RID rid;
+	for (int i = 0; i < numTuple; ++i) {
+		prepareKey(key, generateRandomString(5,5));
+		rid.pageNum = i;
+		rid.slotNum = i;
+		rc = ix->insertEntry(fileHandle, attr, key,rid);
+		assert(rc == success);
+	}
+
+	char page[PAGE_SIZE];
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		cout << "%%%%%%%%%%%%%%%%Page number " << pn << "%%%%%%%%%%%%%%%%" << endl;
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printPage(page, attr);
+	}
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+
+	cout << "******************end insert test string" << endl;
+}
+
+
 
 //TODO
 int main()
@@ -727,8 +768,12 @@ int main()
 	basic_test_split_int();
 	basic_test_split_float();
 	basic_test_split_string();
-	*/
+
 	basic_test_insert_int();
+	basic_test_insert_float();
+	basic_test_insert_string();
+	*/
+
 	cout << "Finish all tests" << endl;
 	return 0;
 }
