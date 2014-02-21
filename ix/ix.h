@@ -23,7 +23,8 @@
 #define IX_SEARCH_UPPER_BOUND 71
 #define IX_SEARCH_HIT 72
 #define IX_SEARCH_HIT_MED 73
-#define IX_FAILTO_ALLOCATE_PAGE 74
+#define IX_SEARCH_NOT_HIT 74
+#define IX_FAILTO_ALLOCATE_PAGE 75
 
 // define duplicate flag
 typedef bool Dup;
@@ -159,7 +160,12 @@ class IndexManager {
 		  const Attribute &attribute,
 		  const void *key, const RID &rid);
 
-  // binary search an entry
+  RC searchEntry(const PageNum &pageNum,
+		  FileHandle &fileHandle,
+		  const Attribute &attribute,
+		  const void *key, RID &rid);
+
+  // binary search an entry in a page
   RC binarySearchEntry(const void *page,
 		  const Attribute &attr,
 		  const void *key,
@@ -215,6 +221,14 @@ class IX_ScanIterator {
 
   RC getNextEntry(RID &rid, void *key);  		// Get next matching entry
   RC close();             						// Terminate index scan
+ private:
+  vector<RID> rids;
+  vector<char *> keys;
+  size_t curIndex;
+ public:
+  void pushRIDKey(const RID &rid,
+		  const char *key, const Attribute &attr);
+  void setIndex(const size_t &_curIndex) {curIndex = _curIndex;}
 };
 
 //TODO
@@ -249,6 +263,9 @@ public:
 	RC deleteDupRecord(FileHandle &fileHandle,
 			RID &dupHeadRID,
 			const RID &dataRID);
+	RC getNextDupRecord(FileHandle &fileHandle,
+			RID &dupHeadRID,
+			RID &dataRID);
 	// get dup record page
 	RC getDupPage(FileHandle &fileHandle,
 			PageNum &pageNum);

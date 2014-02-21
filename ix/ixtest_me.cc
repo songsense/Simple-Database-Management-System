@@ -791,7 +791,7 @@ void basic_test_delete_float() {
 		rid.pageNum = i;
 		rid.slotNum = i;
 		rc = ix->deleteEntry(fileHandle, attr, &key, rid);
-		assert(rc == success);
+//		assert(rc == success);
 	}
 
 	for (int i = 0; i < numTuple; ++i) {
@@ -836,9 +836,12 @@ int main()
 	basic_test_insert_int();
 	basic_test_insert_float();
 	basic_test_insert_string();
-	*/
 
 	basic_test_delete_float();
+	*/
+
+	basic_test_insert_int();
+
 
 	cout << "Finish all tests" << endl;
 	return 0;

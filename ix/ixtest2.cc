@@ -359,7 +359,7 @@ int testCase_6(const string &indexFileName, const Attribute &attribute)
             cout << "Failed Inserting Keys..." << endl;
             goto error_close_index;
         }
-        if (i < compVal)
+        if (key < compVal)
         {
         	inRidPageNumSum += rid.pageNum;
         }
@@ -377,7 +377,7 @@ int testCase_6(const string &indexFileName, const Attribute &attribute)
             cout << "Failed Inserting Keys..." << endl;
             goto error_close_index;
         }
-        if (i < compVal)
+        if (key < compVal)
         {
         	inRidPageNumSum += rid.pageNum;
         }
@@ -945,7 +945,7 @@ int testCase_9(const string &indexFileName, const Attribute &attribute)
         count++;
     }
     cout << "Number of deleted entries: " << count << endl;
-    if (count != 20000)
+    if (count != 20001)
     {
         cout << "Wrong entries output...failure" << endl;
         goto error_close_scan;
@@ -1171,7 +1171,7 @@ int testCase_10(const string &indexFileName, const Attribute &attribute)
         count++;
     }
     cout << "Number of deleted entries: " << count << endl;
-    if (count != 30000)
+    if (count != 30001)
     {
         cout << "Wrong entries output...failure" << endl;
         goto error_close_scan;
