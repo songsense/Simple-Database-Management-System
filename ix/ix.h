@@ -150,7 +150,8 @@ class IndexManager {
 		  FileHandle &fileHandle,
 		  const Attribute &attribute,
 		  const void *key, const RID &rid,
-		  void *copiedUpKey, bool &copiedUp);
+		  void *copiedUpKey, bool &copiedUp,
+		  PageNum &copiedUpNextPageNum);
   // Delete index entry
   RC deleteEntry(const PageNum &pageNum,
 		  FileHandle &fileHandle,
@@ -193,6 +194,8 @@ class IndexManager {
   // negative: <; positive: >; equal: =;
   int compareKey(const Attribute &attr,
 		  const void *lhs, const void *rhs);
+  void copyKey(void *dest, const void *src,
+		  const Attribute &attr);
 
 
   // for debug only
@@ -202,8 +205,6 @@ class IndexManager {
   void printDupPage(const void *page);
   void printKey(const Attribute &attr,
 		  const void *key);
-  char Entry[PAGE_SIZE];
-  char block[PAGE_SIZE];
 };
 
 class IX_ScanIterator {

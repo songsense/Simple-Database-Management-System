@@ -334,7 +334,7 @@ void basic_test_split_int() {
 	cout << "******************begin split test int" << endl;
 
 	RC rc;
-	SpaceManager *sm = SpaceManager::instance();
+//	SpaceManager *sm = SpaceManager::instance();
 	IndexManager *ix = IndexManager::instance();
 	string indexFileName = "test";
 	remove(indexFileName.c_str());
@@ -412,7 +412,7 @@ void basic_test_split_float() {
 	cout << "******************begin split test float" << endl;
 
 	RC rc;
-	SpaceManager *sm = SpaceManager::instance();
+//	SpaceManager *sm = SpaceManager::instance();
 	IndexManager *ix = IndexManager::instance();
 	string indexFileName = "test";
 	remove(indexFileName.c_str());
@@ -494,7 +494,7 @@ void basic_test_split_string() {
 	cout << "******************begin split test string" << endl;
 
 	RC rc;
-	SpaceManager *sm = SpaceManager::instance();
+//	SpaceManager *sm = SpaceManager::instance();
 	IndexManager *ix = IndexManager::instance();
 	string indexFileName = "test";
 	remove(indexFileName.c_str());
@@ -591,8 +591,8 @@ void basic_test_split_string() {
 	cout << "******************end split test string" << endl;
 }
 
-void basic_test_insert() {
-	cout << "******************begin insert test" << endl;
+void basic_test_insert_string() {
+	cout << "******************begin insert test string" << endl;
 	SpaceManager *sm = SpaceManager::instance();
 	IndexManager *ix = IndexManager::instance();
 	string indexFileName = "test";
@@ -658,9 +658,62 @@ void basic_test_insert() {
 	rc = ix->closeFile(fileHandle);
 	assert(rc == success);
 
-	cout << "******************end insert test" << endl;
+	cout << "******************end insert test string" << endl;
 }
 
+void basic_test_insert_int() {
+	cout << "******************begin insert test int" << endl;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 4;
+	attr.name = "age";
+	attr.type = TypeInt;
+	// prepare data
+	int key = 20;
+
+	RC rc;
+
+	rc = ix->createFile(indexFileName);
+	assert(rc == success);
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	int numTuple = 50;
+
+	RID rid;
+	for (int i = 0; i < numTuple; ++i) {
+		key = i;
+		rid.pageNum = i;
+		rid.slotNum = 2*i;
+		rc = ix->insertEntry(fileHandle, attr, &key,rid);
+		assert(rc == success);
+	}
+
+	key = 139;
+	rid.pageNum = 1111, rid.slotNum = 11;
+	rc = ix->insertEntry(fileHandle, attr, &key, rid);
+
+	char page[PAGE_SIZE];
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		cout << "%%%%%%%%%%%%%%%%Page number " << pn << "%%%%%%%%%%%%%%%%" << endl;
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printPage(page, attr);
+	}
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+
+	cout << "******************end insert test int" << endl;
+}
 
 
 //TODO
@@ -675,12 +728,11 @@ int main()
 	basic_test_space_manager();
 	basic_test_space_manager_2();
 
-	basic_test_insert();
-
 	basic_test_split_int();
 	basic_test_split_float();
-	*/
 	basic_test_split_string();
+	*/
+	basic_test_insert_int();
 	cout << "Finish all tests" << endl;
 	return 0;
 }
