@@ -17,6 +17,7 @@
 #define IX_NOT_ENOUGH_SPACE 61
 #define IX_SLOT_DIR_LESS_ZERO 62
 #define IX_READ_DUP_PAGE 63
+#define IX_DEL_FAILURE 64
 // define return code warning
 #define IX_SEARCH_LOWER_BOUND 70
 #define IX_SEARCH_UPPER_BOUND 71

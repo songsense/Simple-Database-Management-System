@@ -270,8 +270,9 @@ RC IndexManager::insertEntry(FileHandle &fileHandle, const Attribute &attribute,
 
 RC IndexManager::deleteEntry(FileHandle &fileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-	//TODO
-	return -1;
+	RC rc;
+	rc = deleteEntry(ROOT_PAGE, fileHandle, attribute, key, rid);
+	return rc;
 }
 
 RC IndexManager::scan(FileHandle &fileHandle,
@@ -1075,8 +1076,117 @@ RC IndexManager::deleteEntry(const PageNum &pageNum,
 		FileHandle &fileHandle,
 		const Attribute &attribute,
 		const void *key, const RID &rid) {
-// TODO
-	return -1;
+	RC rc;
+	char page[PAGE_SIZE];
+
+	rc = fileHandle.readPage(pageNum, page);
+	if (rc != SUCC) {
+		cerr << "IndexManager::deleteEntry: error read page " << rc << endl;
+		return rc;
+	}
+	IsLeaf pageType = isPageLeaf(page);
+	if (pageType == CONST_IS_DUP_PAGE) {
+		cerr << "IndexManager::deleteEntry: read dup page " << IX_READ_DUP_PAGE << endl;
+		return IX_READ_DUP_PAGE;
+	}
+
+	// search the key
+	SlotNum slotNum;
+	RC rc_search = binarySearchEntry(page, attribute, key, slotNum);
+
+	if (pageType == CONST_IS_LEAF) {
+		// a leaf page
+		if (rc_search == IX_SEARCH_HIT) {
+			// if hit, good just delete and return
+			IndexDir indexDir;
+			rc = getIndexDir(page, indexDir, slotNum);
+			if (rc != SUCC) {
+				cerr << "IndexManager::deleteEntry: getIndexDir error " << rc << endl;
+				return rc;
+			}
+			char *data = page + indexDir.slotOffset
+					+ indexDir.recordLength - sizeof(Dup);
+			Dup dup;
+			memcpy(&dup, data, sizeof(Dup));
+			if (dup == false) {
+				// good it is not duplicate, just delete
+				rc = deleteEntryAtPos(page, slotNum);
+				if (rc != SUCC) {
+					return rc;
+				}
+				rc = fileHandle.writePage(pageNum, page);
+				if (rc != SUCC) {
+					cerr << "IndexManager::deleteEntry: writePage error " << rc << endl;
+					return rc;
+				}
+				return SUCC;
+			} else {
+				// the data is duplicated, must find the one that is to be del
+				SpaceManager *sm = SpaceManager::instance();
+				RID dupHeadRID;
+				data = page + indexDir.slotOffset
+						+ indexDir.recordLength - sizeof(Dup) - sizeof(RID);
+				rc = sm->deleteDupRecord(fileHandle, dupHeadRID, rid);
+				if (rc != SUCC) {
+					// the record does not exist
+					return rc;
+				}
+				if (dupHeadRID.pageNum != DUP_PAGENUM_END) {
+					// update the dup head rid
+					// there are more than 1 word duplicated
+					memcpy(data, &dupHeadRID, sizeof(RID));
+				} else {
+					// there is only one word left
+					deleteEntryAtPos(page, slotNum);
+				}
+				rc = fileHandle.writePage(pageNum, page);
+				if (rc != SUCC) {
+					cerr << "IndexManager::deleteEntry: writePage error " << rc << endl;
+					return rc;
+				}
+			}
+		} else {
+			return rc_search;
+		}
+	} else if (pageType == CONST_NOT_LEAF) {
+		IndexDir indexDir;
+		SlotNum slotNumtoLookat = slotNum;
+		SlotNum totalSlotNum = getSlotNum(page);
+		if (slotNum > totalSlotNum) {
+			// here we need the slot number to get the entry
+			// the entry has page number points to its right child
+			slotNumtoLookat = totalSlotNum;
+		}
+		rc = getIndexDir(page, indexDir, slotNumtoLookat);
+		if (rc != SUCC) {
+			cerr << "request slot num " << slotNumtoLookat << endl;
+			cerr << "while there are only " << getSlotNum(page) << endl;
+			cerr << "IndexManager::deleteEntry: get index dir error " << rc << endl;
+			return rc;
+		}
+		char *data = page + indexDir.slotOffset;
+
+		if (rc_search == IX_SEARCH_HIT ||
+				rc_search == IX_SEARCH_UPPER_BOUND) {
+			// look at right
+			data += (indexDir.recordLength - sizeof(PageNum));
+		} else if (rc_search == IX_SEARCH_LOWER_BOUND ||
+				rc_search == IX_SEARCH_HIT_MED){
+			// look at left
+			data -= sizeof(PageNum);
+		}
+
+		PageNum nextPageNum;
+		memcpy(&nextPageNum, data, sizeof(PageNum));
+		rc = deleteEntry(nextPageNum, fileHandle, attribute,
+				key, rid);
+		if (rc != SUCC) {
+			cerr << "IndexManager::insertEntry: next insert index entry error " << rc << endl;
+			return rc;
+		}
+	}
+
+	return SUCC;
 }
 // binary search an entry
 RC IndexManager::binarySearchEntry(const void *page,
@@ -1781,14 +1891,14 @@ RC SpaceManager::deleteDupRecord(FileHandle &fileHandle,
 			cerr << "deleteDupRecord: try to read page " <<
 					curPageNum <<
 					" warning code " << rc << endl;
-			return SUCC;
+			return rc;
 		}
 
 		// get the total number of slot num
 		SlotNum totalSlotNum = ix->getSlotNum(page);
 		if (curSlotNum > totalSlotNum) {
 			cerr << "try to delete a dup record, but does not exist in index" << endl;
-			return SUCC;
+			return IX_DEL_FAILURE;
 		}
 
 		// read the data rid and next rid
@@ -1804,7 +1914,7 @@ RC SpaceManager::deleteDupRecord(FileHandle &fileHandle,
 				// this is the last record
 				// nothing hit
 				// return
-				return SUCC;
+				return IX_DEL_FAILURE;
 			}
 			// not the record to be deleted
 			// get the next dup record
@@ -1868,7 +1978,7 @@ RC SpaceManager::deleteDupRecord(FileHandle &fileHandle,
 			// this is not an error
 			// output a warning and return success
 			cerr << "deleteDupRecord: total slot num is less than current slot number " << rc << endl;
-			return SUCC;
+			return IX_DEL_FAILURE;
 		}
 		if (totalSlotNum == curSlotNum) {
 			SlotNum slotDirShrink = 0, backSlotNum(curSlotNum-1);
@@ -1900,7 +2010,7 @@ RC SpaceManager::deleteDupRecord(FileHandle &fileHandle,
 			// if the index dir is already deleted
 			// then everything is done, just return
 			if (indexDir.slotOffset == DUP_SLOT_DEL)
-				return SUCC;
+				return IX_DEL_FAILURE;
 
 			// set the slot dir to be deleted
 			indexDir.slotOffset = DUP_SLOT_DEL;

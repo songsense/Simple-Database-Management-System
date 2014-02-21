@@ -751,7 +751,71 @@ void basic_test_insert_string() {
 	cout << "******************end insert test string" << endl;
 }
 
+void basic_test_delete_float() {
+	cout << "******************begin delete test float" << endl;
 
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 4;
+	attr.name = "height";
+	attr.type = TypeReal;
+	// prepare data
+	float key = 20;
+
+	RC rc;
+
+	rc = ix->createFile(indexFileName);
+	assert(rc == success);
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	int numTuple = 100;
+
+	RID rid;
+	for (int i = 0; i < numTuple; ++i) {
+		key = 170 + (double)i/numTuple;
+		rid.pageNum = i;
+		rid.slotNum = i;
+		rc = ix->insertEntry(fileHandle, attr, &key,rid);
+		assert(rc == success);
+	}
+
+	for (int i = 0; i < numTuple; ++i) {
+		key = 170 + (double)i/numTuple;
+		rid.pageNum = i;
+		rid.slotNum = i;
+		rc = ix->deleteEntry(fileHandle, attr, &key, rid);
+		assert(rc == success);
+	}
+
+	for (int i = 0; i < numTuple; ++i) {
+		key = 180 + (double)i/numTuple;
+		rid.pageNum = i;
+		rid.slotNum = i;
+		rc = ix->insertEntry(fileHandle, attr, &key,rid);
+		assert(rc == success);
+	}
+
+	char page[PAGE_SIZE];
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 0; pn < totalPageNum; ++pn) {
+		cout << "%%%%%%%%%%%%%%%%Page number " << pn << "%%%%%%%%%%%%%%%%" << endl;
+		rc = fileHandle.readPage(pn, page);
+		assert(rc == success);
+		ix->printPage(page, attr);
+	}
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+	cout << "******************end delete test float" << endl;
+}
 
 //TODO
 int main()
@@ -773,6 +837,8 @@ int main()
 	basic_test_insert_float();
 	basic_test_insert_string();
 	*/
+
+	basic_test_delete_float();
 
 	cout << "Finish all tests" << endl;
 	return 0;
