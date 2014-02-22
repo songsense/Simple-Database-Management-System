@@ -159,7 +159,7 @@ class IndexManager {
 		  FileHandle &fileHandle,
 		  const Attribute &attribute,
 		  const void *key, const RID &rid);
-
+  // searchEntry(5) returns rid in index not data file
   RC searchEntry(const PageNum &pageNum,
 		  FileHandle &fileHandle,
 		  const Attribute &attribute,
@@ -225,7 +225,9 @@ class IX_ScanIterator {
   vector<RID> rids;
   vector<char *> keys;
   size_t curIndex;
+  Attribute attribute;
  public:
+  void setAttribute(const Attribute &attr);
   void pushRIDKey(const RID &rid,
 		  const char *key, const Attribute &attr);
   void setIndex(const size_t &_curIndex) {curIndex = _curIndex;}

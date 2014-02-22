@@ -786,18 +786,100 @@ void basic_test_delete_float() {
 		assert(rc == success);
 	}
 
-	for (int i = 0; i < numTuple; ++i) {
+	for (int i = 0; i < numTuple; i+=2) {
 		key = 170 + (double)i/numTuple;
 		rid.pageNum = i;
 		rid.slotNum = i;
 		rc = ix->deleteEntry(fileHandle, attr, &key, rid);
-//		assert(rc == success);
 	}
 
-	for (int i = 0; i < numTuple; ++i) {
-		key = 180 + (double)i/numTuple;
+	IX_ScanIterator scanner;
+	unsigned step = 1;
+	int totalNumber = 0;
+	ix->scan(fileHandle, attr, NULL, NULL, false, false, scanner);
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(key == 170 + (float)step/numTuple);
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		step += 2;
+		++totalNumber;
+	}
+	assert(totalNumber == numTuple/2);
+	scanner.close();
+
+	for (int i = 1; i < numTuple; i+=4) {
+		key = 170 + (double)i/numTuple;
 		rid.pageNum = i;
 		rid.slotNum = i;
+		rc = ix->deleteEntry(fileHandle, attr, &key, rid);
+	}
+	step = 3;
+	totalNumber = 0;
+	ix->scan(fileHandle, attr, NULL, NULL, false, false, scanner);
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(key == 170 + (float)step/numTuple);
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		step += 4;
+		++totalNumber;
+	}
+	assert(totalNumber == numTuple/4);
+	scanner.close();
+
+	for (int i = 3; i < numTuple; i+=4) {
+		key = 170 + (double)i/numTuple;
+		rid.pageNum = i;
+		rid.slotNum = i;
+		rc = ix->deleteEntry(fileHandle, attr, &key, rid);
+	}
+	step = 3;
+	totalNumber = 0;
+	ix->scan(fileHandle, attr, NULL, NULL, false, false, scanner);
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(key == 170 + (float)step/numTuple);
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		step += 4;
+		++totalNumber;
+	}
+	assert(totalNumber == 0);
+	scanner.close();
+
+	rc = ix->closeFile(fileHandle);
+	assert(rc == success);
+	cout << "******************end delete test float" << endl;
+}
+
+void basic_test_scan_int() {
+	cout << "******************begin scan test int" << endl;
+	SpaceManager *sm = SpaceManager::instance();
+	IndexManager *ix = IndexManager::instance();
+	string indexFileName = "test";
+	remove(indexFileName.c_str());
+	FileHandle fileHandle;
+	Attribute attr;
+	attr.length = 4;
+	attr.name = "age";
+	attr.type = TypeInt;
+	// prepare data
+	int key = 20;
+
+	RC rc;
+
+	rc = ix->createFile(indexFileName);
+	assert(rc == success);
+	rc = sm->initIndexFile(indexFileName);
+	assert(rc == success);
+	rc = ix->openFile(indexFileName, fileHandle);
+	assert(rc == success);
+
+	int numTuple = 100;
+
+	RID rid;
+	for (int i = 0; i < numTuple; ++i) {
+		key = i;
+		rid.pageNum = key;
+		rid.slotNum = key;
 		rc = ix->insertEntry(fileHandle, attr, &key,rid);
 		assert(rc == success);
 	}
@@ -811,12 +893,223 @@ void basic_test_delete_float() {
 		assert(rc == success);
 		ix->printPage(page, attr);
 	}
+	IX_ScanIterator scanner;
+	int leftKey = 25, rightKey = 75;
+	unsigned step = 0;
+	int totalNum = 0;
+
+	cout << "initialize scanner" << endl;
+	rc = ix->scan(fileHandle, attr, NULL, NULL, true, true, scanner);
+	assert(rc == success);
+	step = 0;
+	totalNum = 0;
+	cout << "thoroughly scan" << endl;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 100);
+	scanner.close();
+
+	cout << "[25,75]" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, &rightKey, true, true, scanner);
+	assert(rc == success);
+	step = 25;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 51);
+	scanner.close();
+
+	cout << "(25,75]" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, &rightKey, false, true, scanner);
+	assert(rc == success);
+	step = 26;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 50);
+	scanner.close();
+
+	cout << "[25,75)" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, &rightKey, true, false, scanner);
+	assert(rc == success);
+	step = 25;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 50);
+	scanner.close();
+
+	cout << "(25,75)" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, &rightKey, false, false, scanner);
+	assert(rc == success);
+	step = 26;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 49);
+	scanner.close();
+
+	cout << "[25,\\infty)" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, NULL, true, false, scanner);
+	assert(rc == success);
+	step = 25;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 75);
+	scanner.close();
+
+	cout << "[25,\\infty]" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, NULL, true, true, scanner);
+	assert(rc == success);
+	step = 25;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 75);
+	scanner.close();
+
+	cout << "(25,\\infty]" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, NULL, false, true, scanner);
+	assert(rc == success);
+	step = 26;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 74);
+	scanner.close();
+
+	cout << "(25,\\infty)" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, &leftKey, NULL, false, false, scanner);
+	assert(rc == success);
+	step = 26;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 74);
+	scanner.close();
+
+	cout << "[-\\infty,75]" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, NULL, &rightKey, true, true, scanner);
+	assert(rc == success);
+	step = 0;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 76);
+	scanner.close();
+
+	cout << "(-\\infty,75]" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, NULL, &rightKey, false, true, scanner);
+	assert(rc == success);
+	step = 0;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 76);
+	scanner.close();
+
+	cout << "[-\\infty,75)" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, NULL, &rightKey, true, false, scanner);
+	assert(rc == success);
+	step = 0;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 75);
+	scanner.close();
+
+	cout << "(-\\infty,75)" << endl;
+	leftKey = 25, rightKey = 75;
+	rc = ix->scan(fileHandle, attr, NULL, &rightKey, false, false, scanner);
+	assert(rc == success);
+	step = 0;
+	totalNum = 0;
+	while (scanner.getNextEntry(rid, &key) != IX_EOF) {
+		assert(rid.pageNum == step);
+		assert(rid.slotNum == step);
+		assert(key == (int)step);
+		++step;
+		++totalNum;
+	}
+	assert(totalNum == 75);
+	scanner.close();
 
 	rc = ix->closeFile(fileHandle);
 	assert(rc == success);
-	cout << "******************end delete test float" << endl;
+	cout << "******************end scan test int" << endl;
 }
-
 //TODO
 int main()
 {
@@ -838,9 +1131,11 @@ int main()
 	basic_test_insert_string();
 
 	basic_test_delete_float();
-	*/
 
-	basic_test_insert_int();
+	basic_test_scan_int();
+	*/
+	basic_test_delete_float();
+
 
 
 	cout << "Finish all tests" << endl;
