@@ -37,12 +37,23 @@ RC IndexManager::createFile(const string &fileName)
 	}
 
 	char page[PAGE_SIZE];
+	PageNum totalPageNum = 0;
+	totalPageNum = fileHandle.getNumberOfPages();
 	setPageEmpty(page);
 	setPageLeaf(page, CONST_IS_LEAF);
-	rc = fileHandle.appendPage(page);
+	rc = fileHandle.writePage(ROOT_PAGE, page);
 	if(rc != SUCC) {
-		cerr << "IndexManager::createFile: append root page eror " << rc << endl;
+		cerr << "IndexManager::createFile: write pages eror " << rc << endl;
 		return rc;
+	}
+	for (PageNum pn = 1; pn < totalPageNum; ++pn) {
+		setPageEmpty(page);
+		setPageLeaf(page, CONST_IS_LEAF);
+		rc = fileHandle.writePage(pn, page);
+		if(rc != SUCC) {
+			cerr << "IndexManager::createFile: write pages eror " << rc << endl;
+			return rc;
+		}
 	}
 
 	rc = pfm->closeFile(fileHandle);
@@ -78,7 +89,7 @@ RC IndexManager::openFile(const string &fileName, FileHandle &fileHandle)
 		return rc;
 	}
 	SpaceManager *sm = SpaceManager::instance();
-	rc = sm->initIndexFile(fileName);
+	rc = sm->initIndexFile(fileHandle, fileName);
 	if(rc != SUCC) {
 		cerr << "IndexManager::openFile: init index file error " << rc << endl;
 		return rc;
@@ -1364,8 +1375,17 @@ RC IndexManager::searchEntry(const PageNum &pageNum,
 			rid.slotNum = slotNum;
 			return rc_search;
 		} else if (rc_search == IX_SEARCH_UPPER_BOUND){
-			rid.pageNum = IX_EOF;
-			rid.slotNum = IX_EOF;
+			PageNum nextPageNum = getNextPageNum(page);
+			if (nextPageNum == ROOT_PAGE) {
+				// read the end of a leaf page at the middle
+				rid.pageNum = IX_EOF;
+				rid.slotNum = IX_EOF;
+			} else {
+				// read the end of a leaf page at the middle
+				rid.pageNum = pageNum;
+				rid.slotNum = slotNum;
+				rc_search = IX_SEARCH_HIT_MED;
+			}
 			return rc_search;
 		}
 	} else if (pageType == CONST_NOT_LEAF) {
@@ -1930,19 +1950,10 @@ SpaceManager::~SpaceManager()
 {
 }
 
-RC SpaceManager::initIndexFile(const string &indexFileName) {
-	FileHandle fileHandle;
+RC SpaceManager::initIndexFile(FileHandle &fileHandle,
+		const string &indexFileName) {
 	RC rc;
-	PagedFileManager *pfm = PagedFileManager::instance();
 	IndexManager	*ix = IndexManager::instance();
-
-	// open file
-	rc = pfm->openFile(indexFileName.c_str(), fileHandle);
-	if (rc != SUCC) {
-		cerr << "initIndexFile: open file " <<
-				indexFileName << " error " << rc << endl;
-		return rc;
-	}
 
 	// init list
 	auto itrDup = dupRecordPageList.find(indexFileName);
@@ -1982,13 +1993,6 @@ RC SpaceManager::initIndexFile(const string &indexFileName) {
 		}
 	}
 
-	// close file
-	rc = pfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "initIndexFile: close file " <<
-				indexFileName << " error " << rc << endl;
-		return rc;
-	}
 	return SUCC;
 }
 void SpaceManager::closeIndexFileInfo(const string &indexFileName) {

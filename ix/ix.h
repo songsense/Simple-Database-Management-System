@@ -253,7 +253,8 @@ private:
 	unordered_map<string, unordered_set<PageNum> >dupRecordPageList;
 	unordered_map<string, unordered_set<PageNum> >emptyPageList;
 public:
-	RC initIndexFile(const string &indexFileName);
+	RC initIndexFile(FileHandle &fileHandle,
+			const string &indexFileName);
 	void closeIndexFileInfo(const string &indexFileName);
 	// given first duplicated head RID and data RID
 	// insert the dup record with assigned RID in index
