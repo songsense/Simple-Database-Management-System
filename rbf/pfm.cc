@@ -125,6 +125,7 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle)
 			close_refCounter(fileHandle.fileName);
 		}
 		fileHandle.pFile = NULL;
+		fileHandle.fileName = "";
 		return SUCC;
 	}
     return UNKNOWN_FAILURE;

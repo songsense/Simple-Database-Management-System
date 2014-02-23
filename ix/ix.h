@@ -18,6 +18,7 @@
 #define IX_SLOT_DIR_LESS_ZERO 62
 #define IX_READ_DUP_PAGE 63
 #define IX_DEL_FAILURE 64
+#define IX_INDEX_FILE_NOT_OPEN 65
 // define return code warning
 #define IX_SEARCH_LOWER_BOUND 70
 #define IX_SEARCH_UPPER_BOUND 71
@@ -256,6 +257,7 @@ public:
 	RC initIndexFile(FileHandle &fileHandle,
 			const string &indexFileName);
 	void closeIndexFileInfo(const string &indexFileName);
+	bool isIndexLoaded(const string &indexFileName);
 	// given first duplicated head RID and data RID
 	// insert the dup record with assigned RID in index
 	// NOTE: first use: need config dupHeadRid.PageNum = DUP_PAGENUM_END

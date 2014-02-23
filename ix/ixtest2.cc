@@ -61,7 +61,45 @@ int testCase_4B(const string &indexFileName, const Attribute &attribute)
         }
         inRidPageNumSum += rid.pageNum;
     }
+    for(unsigned i = 0; i <= numOfTuples; i++)
+    {
+        key = i+1;//just in case somebody starts pageNum and recordId from 1
+        rid.pageNum = key;
+        rid.slotNum = key+1;
 
+        rc = indexManager->insertEntry(fileHandle, attribute, &key, rid);
+        if(rc != success)
+        {
+            cout << "Failed Inserting Entry..." << endl;
+            goto error_close_index;
+        }
+    }
+    for(unsigned i = 0; i <= numOfTuples; i++)
+    {
+        key = i+1;//just in case somebody starts pageNum and recordId from 1
+        rid.pageNum = key;
+        rid.slotNum = key+1;
+
+        rc = indexManager->insertEntry(fileHandle, attribute, &key, rid);
+        if(rc != success)
+        {
+            cout << "Failed Inserting Entry..." << endl;
+            goto error_close_index;
+        }
+    }
+    for(unsigned i = 0; i <= numOfTuples; i++)
+    {
+        key = i+1;//just in case somebody starts pageNum and recordId from 1
+        rid.pageNum = key;
+        rid.slotNum = key+1;
+
+        rc = indexManager->insertEntry(fileHandle, attribute, &key, rid);
+        if(rc != success)
+        {
+            cout << "Failed Inserting Entry..." << endl;
+            goto error_close_index;
+        }
+    }
     // scan
     rc = indexManager->scan(fileHandle, attribute, NULL, NULL, true, true, ix_ScanIterator);
     if(rc == success)
@@ -82,6 +120,9 @@ int testCase_4B(const string &indexFileName, const Attribute &attribute)
 
     if (inRidPageNumSum != outRidPageNumSum)
     {
+    	cout << "Wrong here!!!!" << endl;
+    	cout << "inRidPageNumSum:" << inRidPageNumSum;
+    	cout << "\toutRidPageNumSum: " << outRidPageNumSum << endl;
     	cout << "Wrong entries output...failure" << endl;
     	goto error_close_scan;
     }
@@ -123,6 +164,7 @@ int testCase_4B(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 3;
+    cout << "1. g_nGradPoint" << endl;
     g_nUndergradPoint += 3;
     return success;
 
@@ -283,6 +325,7 @@ int testCase_5(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 5;
+    cout << "2. g_nGradPoint" << endl;
     g_nUndergradPoint += 5;
     return success;
 
@@ -451,6 +494,7 @@ int testCase_6(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 5;
+    cout << "3. g_nGradPoint" << endl;
     g_nUndergradPoint += 5;
     return success;
 
@@ -628,6 +672,7 @@ int testCase_7(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 5;
+    cout << "4. g_nGradPoint" << endl;
     g_nUndergradPoint += 5;
     return success;
 
@@ -826,6 +871,7 @@ int testCase_8(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 5;
+    cout << "5. g_nGradPoint" << endl;
     g_nUndergradPoint += 5;
     return success;
 
@@ -939,7 +985,7 @@ int testCase_9(const string &indexFileName, const Attribute &attribute)
         rc = indexManager->deleteEntry(fileHandle, attribute, &key, rid);
         if(rc != success)
         {
-            cout << "Failed deleting entry in Scan..." << endl;
+            cout << "Failed deleting entry in Scan... " << rc << endl;
             goto error_close_scan;
         }
         count++;
@@ -1050,6 +1096,7 @@ int testCase_9(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 5;
+    cout << "6. g_nGradPoint" << endl;
     g_nUndergradPoint += 5;
     return success;
 
@@ -1276,6 +1323,7 @@ int testCase_10(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 5;
+    cout << "7. g_nGradPoint" << endl;
     g_nUndergradPoint += 5;
     return success;
 
@@ -1435,6 +1483,7 @@ int testCase_extra_1(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradExtraPoint += 5;
+    cout << "1. g_nGradExtraPoint" << endl;
     g_nUndergradExtraPoint += 5;
     return success;
 
@@ -1594,6 +1643,7 @@ int testCase_extra_2(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradExtraPoint += 5;
+    cout << "1. g_nGradExtraPoint" << endl;
     g_nUndergradExtraPoint += 5;
     return success;
 
@@ -1741,6 +1791,7 @@ int testCase_extra_3(const string &indexFileName, const Attribute &attribute)
     }
 
     g_nGradPoint += 5;
+    cout << "8. g_nGradPoint" << endl;
     g_nUndergradExtraPoint += 5;
     return success;
 
