@@ -391,6 +391,7 @@ RC IndexManager::scan(FileHandle &fileHandle,
 				// need to add duplicate records all
 				SpaceManager *sm = SpaceManager::instance();
 				RID dataRID;
+				unordered_set<unsigned long> checkDupRID;
 				while(true) {
 					if (headRID.pageNum == DUP_PAGENUM_END)
 						break;
@@ -403,7 +404,12 @@ RC IndexManager::scan(FileHandle &fileHandle,
 						cerr << "scan: getNextDupRecord error " << rc << endl;
 						return rc;
 					}
-					ix_ScanIterator.pushRIDKey(dataRID, key, attribute);
+					unsigned long ridKey = dataRID.slotNum * PAGE_SIZE
+							+ dataRID.pageNum;
+					if (checkDupRID.count(ridKey) ==  0) {
+						ix_ScanIterator.pushRIDKey(dataRID, key, attribute);
+						checkDupRID.insert(ridKey);
+					}
 				}
 			}
 		}
@@ -990,7 +996,8 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 				memcpy(&rid2Insert, p_rid2Insert, sizeof(RID));
 				if (rid2Insert.pageNum == rid.pageNum &&
 						rid2Insert.slotNum == rid.slotNum) {
-					return SUCC;
+					// this is a dup record with the same key and rid
+					return IX_INSERT_DUP_KEY_RID;
 				}
 				// set the record to be dup
 				isDup = true;
@@ -1002,7 +1009,7 @@ RC IndexManager::insertEntry(const PageNum &pageNum,
 				rc = sm->insertDupRecord(fileHandle,
 						dupHeadRID, rid, dupAssignedRID);
 				if (rc != SUCC) {
-					cerr << "IndexManager::insertEntry: insert dup record error 2 " << rc << endl;
+					// cerr << "IndexManager::insertEntry: insert dup record error 2 " << rc << endl;
 					return rc;
 				}
 				// set the second record
@@ -2057,11 +2064,13 @@ RC SpaceManager::insertDupRecord(FileHandle &fileHandle,
 	RC rc;
 	// first check if there has been already inserted a dup record that
 	// has the same rid
+	/*
 	RID insertedDataRID;
 	RID curDupRID;
 	curDupRID.pageNum = dupHeadRID.pageNum;
 	curDupRID.slotNum = dupHeadRID.slotNum;
 	SpaceManager *sm = SpaceManager::instance();
+
 	while(true) {
 		if (curDupRID.pageNum == DUP_PAGENUM_END)
 			break;
@@ -2080,10 +2089,11 @@ RC SpaceManager::insertDupRecord(FileHandle &fileHandle,
 				insertedDataRID.slotNum == dataRID.slotNum) {
 			// found a dup record with the same rid
 			// no need to add one more
-			return SUCC;
+			// this is a dup record with the same key and rid
+			return IX_INSERT_DUP_KEY_RID;
 		}
 	}
-
+*/
 	IndexManager *ix = IndexManager::instance();
 
 	PageNum pageNum;
@@ -2334,8 +2344,14 @@ RC SpaceManager::deleteDupRecord(FileHandle &fileHandle,
 				spaceAvailable > DUP_RECORD_SIZE)
 			putDupPage(fileHandle, curPageNum);
 
-		// hit/finished so we return
-		break;
+		// get the next dup record
+		// we are not sure if there are more records with exactly the
+		// same kid and rid
+		// must verify this throughout the dup records
+		prevPageNum = curPageNum;
+		prevSlotNum = curSlotNum;
+		curPageNum = nextRid.pageNum;
+		curSlotNum = nextRid.slotNum;
 	}
 
 	return SUCC;

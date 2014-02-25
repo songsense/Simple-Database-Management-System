@@ -26,6 +26,7 @@
 #define IX_SEARCH_HIT_MED 73
 #define IX_SEARCH_NOT_HIT 74
 #define IX_FAILTO_ALLOCATE_PAGE 75
+#define IX_INSERT_DUP_KEY_RID 76
 
 // define duplicate flag
 typedef bool Dup;
