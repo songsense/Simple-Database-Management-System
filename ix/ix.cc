@@ -407,6 +407,8 @@ RC IndexManager::scan(FileHandle &fileHandle,
 					unsigned long ridKey = dataRID.slotNum * PAGE_SIZE
 							+ dataRID.pageNum;
 					if (checkDupRID.count(ridKey) ==  0) {
+						// prevent dup entry with the same rid and key
+						// scanned twice
 						ix_ScanIterator.pushRIDKey(dataRID, key, attribute);
 						checkDupRID.insert(ridKey);
 					}
