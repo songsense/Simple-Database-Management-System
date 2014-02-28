@@ -477,7 +477,51 @@ void IX_ScanIterator::pushRIDKey(const RID &rid,
 
 void IX_PrintError (RC rc)
 {
-	//TODO
+	switch(rc) {
+	case IX_SLOT_DIR_OVERFLOW:
+		cerr << "Error: Try to visit an index slot directory " <<
+		"that is greater than the total number of the slots." << endl;
+		break;
+	case IX_NOT_ENOUGH_SPACE:
+		cerr << "Error: Try to insert an entry to the page, while the page space is not enough." << endl;
+		break;
+	case IX_SLOT_DIR_LESS_ZERO:
+		cerr << "Error: Try to visit an index slot directory with negative number." << endl;
+		break;
+	case IX_READ_DUP_PAGE:
+		cerr << "Error: Permission to visit an overflow page is denied." << endl;
+		break;
+	case IX_DEL_FAILURE:
+		cerr << "Error/Warning: Try to delete a non-exist entry." << endl;
+		break;
+	case IX_INDEX_FILE_NOT_OPEN:
+		cerr << "Error: Try to use a non-existed index file." << endl;
+		break;
+	case IX_SEARCH_LOWER_BOUND:
+		cerr << "Signal: Reach the lower bound of the index entries." << endl;
+		break;
+	case IX_SEARCH_UPPER_BOUND:
+		cerr << "Signal: Reach the upper bound of the index entries." << endl;
+		break;
+	case IX_SEARCH_HIT:
+		cerr << "Signal: Hit the entry." << endl;
+		break;
+	case IX_SEARCH_HIT_MED:
+		cerr << "Signal: Entry not hit, but just greater than current entry pointed to." << endl;
+		break;
+	case IX_SEARCH_NOT_HIT:
+		cerr << "Signal: Entry not hit." << endl;
+		break;
+	case IX_FAILTO_ALLOCATE_PAGE:
+		cerr << "Error: Cannot allocate a new page" << endl;
+		break;
+	case IX_INSERT_DUP_KEY_RID:
+		cerr << "Warning: Try to insert a duplicate entry with the same key and RID." << endl;
+		break;
+	default:
+		cerr << "Error: Unknown error" << endl;
+		break;
+	}
 }
 
 /*
