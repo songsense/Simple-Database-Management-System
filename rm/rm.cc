@@ -3,6 +3,113 @@
 
 RelationManager* RelationManager::_rm = 0;
 
+RC RelationManager::createIndex(const string &tableName, const string &attributeName) {
+	//TODO
+	RC rc;
+	IndexManager *ix = IndexManager::instance();
+
+	rc = ix->createFile(tableName + "_" + attributeName);
+	if (rc != SUCC) {
+		cerr << "createIndex: createFile error " << rc << endl;
+		return rc;
+	}
+
+	return SUCC;
+}
+
+RC RelationManager::destroyIndex(const string &tableName, const string &attributeName) {
+	RC rc;
+	IndexManager *ix = IndexManager::instance();
+
+	rc = ix->destroyFile(tableName + "_" + attributeName);
+	if (rc != SUCC) {
+		cerr << "destroyIndex: destroyFile error " << rc << endl;
+		return rc;
+	}
+
+	return SUCC;
+}
+
+// get specific attribute
+RC RelationManager::getSpecificAttribute(const string &tableName, const string &attributeName, Attribute &attr) {
+	RC rc;
+	vector<Attribute> attrs;
+	rc = getAttributes(tableName, attrs);
+	if (rc != SUCC) {
+		cerr << "getSpecificAttribute: get attribute error " << rc << endl;
+		return rc;
+	}
+
+	bool flag = false;
+	for (unsigned i = 0; i < attrs.size(); ++i) {
+		if (attrs[i].name == attributeName) {
+			attr.length = attrs[i].length;
+			attr.name = attrs[i].name;
+			attr.type = attrs[i].type;
+			flag = true;
+			break;
+		}
+	}
+
+	if (flag == false) {
+		rc = RM_CANNOT_FIND_ATTRIBUTE;
+		cerr << "getSpecificAttribute: get attribute error " << rc << endl;
+		return rc;
+	}
+
+	return SUCC;
+}
+
+// indexScan returns an iterator to allow the caller to go through qualified entries in index
+RC RelationManager::indexScan(const string &tableName,
+		const string &attributeName,
+		const void *lowKey,
+		const void *highKey,
+		bool lowKeyInclusive,
+		bool highKeyInclusive,
+		RM_IndexScanIterator &rm_IndexScanIterator) {
+	RC rc;
+	IndexManager *ix = IndexManager::instance();
+	// open the file
+	FileHandle fileHandle;
+	rc = ix->openFile(tableName + "_" + attributeName, fileHandle);
+	if (rc != SUCC) {
+		cerr << "indexScan: open index file error " << rc << endl;
+		return rc;
+	}
+
+	Attribute attr;
+	rc = getSpecificAttribute(tableName, attributeName, attr);
+	if (rc != SUCC) {
+		cerr << "indexScan: get specific attribute error " << rc << endl;
+		return rc;
+	}
+
+	rc = ix->scan(fileHandle, attr, lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_scanIterator);
+	if (rc != SUCC) {
+		cerr << "indexScan: scan error " << rc << endl;
+		return rc;
+	}
+
+	rc = ix->closeFile(fileHandle);
+	if (rc != SUCC) {
+		cerr << "indexScan: close index file error " << rc << endl;
+		return rc;
+	}
+
+	return SUCC;
+}
+
+// Get next matching entry
+RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key) {
+	return ix_scanIterator.getNextEntry(rid, key);
+}
+// Terminate index scan
+RC RM_IndexScanIterator::close() {
+	return ix_scanIterator.close();
+}
+
+
 RC RM_ScanIterator::getNextTuple(RID &rid, void *data) {
 	if (rbfm_si.getNextRecord(rid, data) == RBFM_EOF)
 		return RM_EOF;
@@ -55,7 +162,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	}
 
 	// create the first two pages
-	// add an attribute to the front of the att desriptor
+	// add an attribute to the front of the attr desriptor
 	vector<Attribute> verAttrs;
 	verAttrs.push_back(headVersionAttribute);
 	for (int i = 0; i < int(attrs.size()); ++i) {
@@ -87,6 +194,8 @@ RC RelationManager::deleteTable(const string &tableName)
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	VersionManager *vm = VersionManager::instance();
 	RC rc;
+
+	closeTable(tableName);
 
 	// just destroy the table
 	rc = rbfm->destroyFile(tableName);
@@ -122,33 +231,53 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 	return SUCC;
 }
 
-RC RelationManager::openTable(const string &tableName, FileHandle &fileHandle) {
+RC RelationManager::openTable(const string &tableName, FileHandle *&fileHandle) {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	RC rc;
 	VersionManager *vm = VersionManager::instance();
 
-	rc = rbfm->openFile(tableName, fileHandle);
+	if (cachedFileHandle.count(tableName) > 0) {
+		fileHandle = cachedFileHandle[tableName];
+		return SUCC;
+	}
+	FileHandle *fhandle = new FileHandle();
+
+	rc = rbfm->openFile(tableName, *fhandle);
 	if(rc != SUCC) {
 		cerr << "Open Table: error open file" << rc << endl;
 		return rc;
 	}
 
-	rc = vm->initTableVersionInfo(tableName,fileHandle);
+	rc = vm->initTableVersionInfo(tableName, *fhandle);
 	if(rc != SUCC) {
 		cerr << "Open Table: error initialize catelog" << rc << endl;
 		return rc;
 	}
 
+	fileHandle = fhandle;
+	cachedFileHandle[tableName] = fhandle;
+
 	return SUCC;
 }
 
-RC RelationManager::closeTable(const string &tableName, FileHandle &fileHandle) {
+RC RelationManager::closeTable(const string &tableName) {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-	RC rc = rbfm->closeFile(fileHandle);
+
+	if (cachedFileHandle.count(tableName) == 0) {
+		return SUCC;
+	}
+
+	FileHandle *fhandle = cachedFileHandle[tableName];
+
+	RC rc = rbfm->closeFile(*fhandle);
 	if (rc != SUCC) {
 		cerr << "Open Table: error close file" << rc << endl;
 		return rc;
 	}
+
+	cachedFileHandle.erase(tableName);
+	delete fhandle;
+
 	return SUCC;
 }
 
@@ -160,8 +289,14 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
+	if (rc != SUCC) {
+		cerr << "insertTuple: open table " << tableName << " error " << rc << endl;
+		return rc;
+	}
+
+	rc = rbfm->openFile(tableName, *fileHandle);
 	if (rc != SUCC) {
 		cerr << "insertTuple: open file " << tableName << " error " << rc << endl;
 		return rc;
@@ -188,17 +323,12 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 	addVersion2Data(tuple, data, curVer, recordSize);
 
 	// insert the tuple
-	rc = rbfm->insertRecord(fileHandle, attrs, tuple, rid);
+	rc = rbfm->insertRecord(*fileHandle, attrs, tuple, rid);
 	if (rc != SUCC) {
 		cerr << "insertTuple: insert record " << rc << endl;
 		return rc;
 	}
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "insertTuple: close file " << rc << endl;
-		return rc;
-	}
+
 
     return SUCC;
 }
@@ -209,24 +339,17 @@ RC RelationManager::deleteTuples(const string &tableName)
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "deleteTuples: open file error " << rc << endl;
+		cerr << "deleteTuples: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
 	// delete records
-	rc = rbfm->deleteRecords(fileHandle);
+	rc = rbfm->deleteRecords(*fileHandle);
 	if (rc != SUCC) {
 		cerr << "deleteTuples: delete records " << rc << endl;
-		return rc;
-	}
-
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "deleteTuples: close file " << rc << endl;
 		return rc;
 	}
 
@@ -239,10 +362,10 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "deleteTuple: open file error " << rc << endl;
+		cerr << "deleteTuple: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
@@ -254,16 +377,9 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 		return rc;
 	}
 
-	rc = rbfm->deleteRecord(fileHandle, attrs, rid);
+	rc = rbfm->deleteRecord(*fileHandle, attrs, rid);
 	if (rc != SUCC) {
 		cerr << "deleteTuple: delete record error " << rc << endl;
-		return rc;
-	}
-
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "deleteTuple: close file error " << rc << endl;
 		return rc;
 	}
 
@@ -278,12 +394,13 @@ RC RelationManager::updateTuple(const string &tableName, const void *data,
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "updateTuple: open file error " << rc << endl;
+		cerr << "updateTuple: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
+
 	// get the current version
 	VersionNumber curVer;
 	rc = vm->getVersionNumber(tableName, curVer);
@@ -306,16 +423,9 @@ RC RelationManager::updateTuple(const string &tableName, const void *data,
 	addVersion2Data(tuple, data, curVer, recordSize);
 
 	// update the tuple
-	rc = rbfm->updateRecord(fileHandle, attrs, tuple, rid);
+	rc = rbfm->updateRecord(*fileHandle, attrs, tuple, rid);
 	if (rc != SUCC) {
 		cerr << "updateTuple: update tuple " << rc << endl;
-		return rc;
-	}
-
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "updateTuple: close file " << rc << endl;
 		return rc;
 	}
 
@@ -331,10 +441,10 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "readTuple: open file error " << rc << endl;
+		cerr << "readTuple: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
@@ -346,7 +456,7 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 		return rc;
 	}
 
-	rc = rbfm->readRecord(fileHandle, attrs, rid, tuple);
+	rc = rbfm->readRecord(*fileHandle, attrs, rid, tuple);
 	if (rc != SUCC) {
 		if (rc != RC_RECORD_DELETED)
 			cerr << "readTuple: read the record " << rc << endl;
@@ -368,12 +478,6 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 		return rc;
 	}
 
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "readTuple: close file " << rc << endl;
-		return rc;
-	}
 
     return SUCC;
 }
@@ -385,10 +489,10 @@ RC RelationManager::readAttribute(const string &tableName,
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "RelationManager::readAttribute: open file error " << rc << endl;
+		cerr << "RelationManager::readAttribute: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
@@ -401,16 +505,9 @@ RC RelationManager::readAttribute(const string &tableName,
 	}
 
 	// read the attribute
-	rc = rbfm->readAttribute(fileHandle, attrs, rid, attributeName, data);
+	rc = rbfm->readAttribute(*fileHandle, attrs, rid, attributeName, data);
 	if (rc != SUCC) {
 		cerr << "RelationManager::readAttribute: read attribute error " << rc << endl;
-		return rc;
-	}
-
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "RelationManager::readAttribute: close file " << rc << endl;
 		return rc;
 	}
     return SUCC;
@@ -422,10 +519,10 @@ RC RelationManager::reorganizePage(const string &tableName, const unsigned pageN
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "RelationManager::reorganizePage: open file error " << rc << endl;
+		cerr << "RelationManager::reorganizePage: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 	// get the current version attribute
@@ -437,18 +534,12 @@ RC RelationManager::reorganizePage(const string &tableName, const unsigned pageN
 	}
 
 	// reorganizePage
-	rc = rbfm->reorganizePage(fileHandle, attrs, pageNumber);
+	rc = rbfm->reorganizePage(*fileHandle, attrs, pageNumber);
 	if (rc != SUCC) {
 		cerr << "RelationManager::reorganizePage: reorganize page erro " << rc << endl;
 		return rc;
 	}
 
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "RelationManager::reorganizePage: close file error " << rc << endl;
-		return rc;
-	}
     return SUCC;
 }
 
@@ -462,12 +553,12 @@ RC RelationManager::scan(const string &tableName,
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	VersionManager *vm = VersionManager::instance();
 	RC rc;
-	FileHandle fileHandle;
 
 	// open file handle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "RelationManager::scan open file error " << rc << endl;
+		cerr << "RelationManager::scan: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
@@ -485,17 +576,11 @@ RC RelationManager::scan(const string &tableName,
 		return rc;
 	}
 
-	rc = rbfm->scan(fileHandle, recordDesriptor,
+	rc = rbfm->scan(*fileHandle, recordDesriptor,
 			conditionAttribute, compOp, value,
 			attributeNames, rm_ScanIterator.rbfm_si);
 	if (rc != SUCC) {
 		cerr << "RelationManager::scan: scan initialization error " << rc << endl;
-		return rc;
-	}
-
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "RelationManager::scan close file error " << rc << endl;
 		return rc;
 	}
 
@@ -505,29 +590,21 @@ RC RelationManager::scan(const string &tableName,
 // Extra credit
 RC RelationManager::dropAttribute(const string &tableName, const string &attributeName)
 {
-	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	VersionManager *vm = VersionManager::instance();
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "dropAttribute: open file error " << rc << endl;
+		cerr << "RelationManager::dropAttribute: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
 	// drop attribute
-	rc = vm->dropAttribute(tableName, attributeName, fileHandle);
+	rc = vm->dropAttribute(tableName, attributeName, *fileHandle);
 	if (rc != SUCC) {
 		cerr << "dropAttribute: drop attribute error " << rc << endl;
-		return rc;
-	}
-
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "dropAttribute: close file error " << rc << endl;
 		return rc;
 	}
 
@@ -537,29 +614,21 @@ RC RelationManager::dropAttribute(const string &tableName, const string &attribu
 // Extra credit
 RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 {
-	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	VersionManager *vm = VersionManager::instance();
 	RC rc;
 
 	// open the file
-	FileHandle fileHandle;
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "addAttribute: open file error " << rc << endl;
+		cerr << "RelationManager::addAttribute: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
 	// drop attribute
-	rc = vm->addAttribute(tableName, attr, fileHandle);
+	rc = vm->addAttribute(tableName, attr, *fileHandle);
 	if (rc != SUCC) {
 		cerr << "addAttribute: drop attribute error " << rc << endl;
-		return rc;
-	}
-
-	// close the file
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "addAttribute: close file error " << rc << endl;
 		return rc;
 	}
 
@@ -571,24 +640,18 @@ RC RelationManager::reorganizeTable(const string &tableName)
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	RC rc;
-	FileHandle fileHandle;
 
-	rc = rbfm->openFile(tableName, fileHandle);
+	FileHandle *fileHandle;
+	rc = openTable(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "reorganizeTable: open file error " << rc << endl;
+		cerr << "RelationManager::reorganizeTable: open table " << tableName << " error " << rc << endl;
 		return rc;
 	}
 
 	vector<Attribute> recordDescriptor; // no use in our implementation
-	rc = rbfm->reorganizeFile(fileHandle, recordDescriptor);
+	rc = rbfm->reorganizeFile(*fileHandle, recordDescriptor);
 	if (rc != SUCC) {
 		cerr << "reorganizeTable: reorganize file error " << rc << endl;
-		return rc;
-	}
-
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "reorganizeTable: close file error " << rc << endl;
 		return rc;
 	}
 

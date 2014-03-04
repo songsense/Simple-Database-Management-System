@@ -7,10 +7,11 @@
 #include <unordered_map>
 
 #include "../rbf/rbfm.h"
+#include "../ix/ix.h"
 
 using namespace std;
 
-
+#define RM_CANNOT_FIND_ATTRIBUTE 80
 
 typedef unsigned AttrNumber;
 
@@ -36,6 +37,16 @@ public:
   RBFM_ScanIterator rbfm_si;
 };
 
+class RM_IndexScanIterator {
+ public:
+  RM_IndexScanIterator() {};  	// Constructor
+  ~RM_IndexScanIterator() {}; 	// Destructor
+
+  // "key" follows the same format as in IndexManager::insertEntry()
+  RC getNextEntry(RID &rid, void *key); 	// Get next matching entry
+  RC close();             			// Terminate index scan
+  IX_ScanIterator ix_scanIterator;
+};
 
 // Relation Manager
 class RelationManager
@@ -72,6 +83,18 @@ public:
       const vector<string> &attributeNames, // a list of projected attributes
       RM_ScanIterator &rm_ScanIterator);
 
+  RC createIndex(const string &tableName, const string &attributeName);
+
+  RC destroyIndex(const string &tableName, const string &attributeName);
+
+  // indexScan returns an iterator to allow the caller to go through qualified entries in index
+  RC indexScan(const string &tableName,
+                        const string &attributeName,
+                        const void *lowKey,
+                        const void *highKey,
+                        bool lowKeyInclusive,
+                        bool highKeyInclusive,
+                        RM_IndexScanIterator &rm_IndexScanIterator);
 
 // Extra credit
 public:
@@ -95,11 +118,14 @@ private:
   // add the version to data
   void addVersion2Data(void *verData, const void *data,
 		  const VersionNumber &ver, const unsigned &recordSize);
-  RC openTable(const string &tableName, FileHandle &fileHandle);
-  RC closeTable(const string &tableName, FileHandle &fileHandle);
+  RC openTable(const string &tableName, FileHandle *&fileHandle);
+  RC closeTable(const string &tableName);
   // get the record size: start from the second attr excluding the Ver
   unsigned getRecordSize(const void *formattedData,
 		  const vector<Attribute> &recordDescriptor);
+  // get specific attribute
+  RC getSpecificAttribute(const string &tableName, const string &attributeName, Attribute &attr);
+  unordered_map<string, FileHandle *> cachedFileHandle;
 };
 
 #endif

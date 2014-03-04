@@ -1693,7 +1693,6 @@ void basic_test_scan_float() {
 	cout << "******************end scan test float" << endl;
 }
 
-//TODO
 void basic_test_scan_string() {
 	cout << "******************begin scan test string" << endl;
 	IndexManager *ix = IndexManager::instance();
@@ -1942,7 +1941,6 @@ void basic_test_scan_string() {
 	cout << "******************end scan test string" << endl;
 }
 
-//TODO
 int main()
 {
 	cout << "Begin tests" << endl;

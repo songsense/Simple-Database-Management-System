@@ -235,7 +235,6 @@ class IX_ScanIterator {
   void setIndex(const size_t &_curIndex) {curIndex = _curIndex;}
 };
 
-//TODO
 // print out the error message for a given return code
 void IX_PrintError (RC rc);
 

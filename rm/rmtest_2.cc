@@ -436,7 +436,8 @@ int testRMLayer(const string &tableName) {
     cout << "Begin inserting " << numTuples << " entries" << endl;
     for(int i = 0; i < numTuples; i++)
     {
-        tuple = malloc(100);
+//    	cout << i << endl;
+    	tuple = malloc(100);
 
         // Insert Tuple
         float height = (float)i;
@@ -445,14 +446,17 @@ int testRMLayer(const string &tableName) {
         convert << i;
         string name = "Tester" + convert.str();
         prepareTuple(name.size(), name, age, height, 2000 + i, tuple, &tupleSize);
+
         ages.insert(age);
+//        cout << "0 about to insert " << tupleSize << endl;
         rc = rm->insertTuple(tableName, tuple, rid);
+//        cout << "1 about to insert " << tupleSize << endl;
         if(rc != success) {
             cout << "****Test case testRMLayer failed****" << endl << endl;
             return -1;
         }
-
         tuples.push_back((char *)tuple);
+//        cout << "2 about to insert " << tupleSize << endl;
         rids[i] = rid;
     }
     cout << "After Insertion!" << endl;
@@ -481,22 +485,22 @@ int testRMLayer(const string &tableName) {
         if (attrID == 0) {
             if (memcmp(((char *)returnedData + 4), ((char *)tuples.at(i) + 4), nameLength) != 0) {
                 cout << "****Test case testRMLayer failed" << endl << endl;
-                assert(rc == success);
+                break;
             }
         } else if (attrID == 1) {
             if (memcmp(((char *)returnedData), ((char *)tuples.at(i) + nameLength + 4), 4) != 0) {
                 cout << "****Test case testRMLayer failed" << endl << endl;
-                assert(rc == success);
+                break;
             } 
         } else if (attrID == 2) {
             if (memcmp(((char *)returnedData), ((char *)tuples.at(i) + nameLength + 4 + 4), 4) != 0) {
                 cout << "****Test case testRMLayer failed" << endl << endl;
-                assert(rc == success);
+                break;
             }
         } else if (attrID == 3) {
             if (memcmp(((char *)returnedData), ((char *)tuples.at(i) + nameLength + 4 + 4 + 4), 4) != 0) {
                 cout << "****Test case testRMLayer failed" << endl << endl;
-                assert(rc == success);
+                break;
             }
         }     
     }
@@ -646,9 +650,9 @@ int testRMLayer(const string &tableName) {
 
 void Tests()
 {
-	/*
+	RC rc;
     // Simple Scan
-    int rc = secA_8_B("tbl_employee3");
+    rc = secA_8_B("tbl_employee3");
     if (rc != 0) {
         total -= 4;
     }
@@ -697,17 +701,17 @@ void Tests()
     if (rc == 0) {
         total += 4;
     }
-    
+
+
     // Scan with conditions
-    createTable("tbl_b_employee4");  
+    createTable("tbl_b_employee4");
     rc = secA_15("tbl_b_employee4");
     if (rc == 0) {
         total += 4;
     }
-    
+
     memProfile();
-    */
-	RC rc;
+
 	remove("tbl_employee5");
     createTable("tbl_employee5");
     rc = testRMLayer("tbl_employee5");

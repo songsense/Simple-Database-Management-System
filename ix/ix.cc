@@ -421,7 +421,6 @@ RC IndexManager::scan(FileHandle &fileHandle,
 			return SUCC;
 		}
 	}
-	//TODO
 	return SUCC;
 }
 
