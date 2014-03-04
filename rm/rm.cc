@@ -163,7 +163,7 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 	FileHandle fileHandle;
 	rc = rbfm->openFile(tableName, fileHandle);
 	if (rc != SUCC) {
-		cerr << "insertTuple: open file error " << rc << endl;
+		cerr << "insertTuple: open file " << tableName << " error " << rc << endl;
 		return rc;
 	}
 	// get the current version
