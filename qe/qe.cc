@@ -27,23 +27,11 @@ RC getTableAttributeName(const string &tableAttribute,
  *
  */
 Filter::Filter(Iterator* input, const Condition &condition) {
-	RelationManager *rm = RelationManager::instance();
-	RC rc;
-
 	// set the iterator
 	iter = input;
 
 	// set the left hand side string
 	lhsAttr = condition.lhsAttr;
-
-	// get the table and condition attribute name from condition's lhsAttr
-	string tableAttributeName(condition.lhsAttr);
-	rc = getTableAttributeName(tableAttributeName, tableName, conditionAttribute);
-	if (rc != SUCC) {
-		cerr << "Filter: Fail to init filter because of illegal condition's lhsAttr " << rc << endl;
-		initStatus = false;
-		return;
-	}
 
 	// set the compOp
 	compOp = condition.op;
@@ -79,7 +67,7 @@ RC Filter::getNextTuple(void *data) {
 
 	do {
 		rc = iter->getNextTuple(data);
-		if (rc == RM_EOF || rc == IX_EOF) {
+		if (rc == RM_EOF || rc == IX_EOF || rc == QE_EOF) {
 			return QE_EOF;
 		}
 	} while (!compareValue(data));
@@ -157,6 +145,7 @@ bool Filter::compareValue(void *input) {
 		return compareValueTemplate(lhs_str, rhs_str);
 		break;
 	}
+	return true;
 }
 /*
  *
@@ -167,83 +156,100 @@ bool Filter::compareValue(void *input) {
 // vector containing attribute names
 Project::Project(Iterator *input,
 		const vector<string> &attrNames) {
-	RelationManager *rm = RelationManager::instance();
-	RC rc;
 	if (attrNames.empty()) {
 		initStatus = false;
 		cerr << "Empty attribute names" << endl;
 		return;
 	}
 
-	string tableName;
-	string attributeName;
-	vector<string> attributeNames;
+	// set the iterator
+	iter = input;
 
-	rc = getTableAttributeName(attrNames[0], tableName, attributeName);
-	if (rc != SUCC) {
-		initStatus = false;
-		cerr << "Initialize Project failure: getTableAttributeName " << rc << endl;
-		return;
-	}
-	attributeNames.push_back(attributeName);
-	// get the attributes
-	rc = rm->getAttributes(tableName, attrs);
-	if (rc != SUCC) {
-		cerr << "Project: Fail to get attributes " << rc << endl;
-		initStatus = false;
-		return;
+	for (string attrName : attrNames) {
+		checkExistAttrNames.emplace(attrName);
 	}
 
-	// get the projected attributes
-	for (unsigned i = 1; i < attrNames.size(); ++i) {
-		rc = getTableAttributeName(attrNames[i], tableName, attributeName);
-		if (rc != SUCC) {
-			initStatus = false;
-			cerr << "Initialize Project failure: getTableAttributeName " << rc << endl;
-			return;
+	// For attribute in vector<Attribute>, name it as rel.attr
+	input->getAttributes(originAttrs);
+	for (Attribute attr : originAttrs) {
+		// original attributes saves the information retrieved from
+		// iterator input
+		if (checkExistAttrNames.count(attr.name) > 0) {
+			attrs.push_back(attr);
 		}
-		attributeNames.push_back(attributeName);
-	}
-
-	// initialize the scanner
-	rc = rm->scan(tableName, "",
-			NO_OP, NULL, attributeNames, iter);
-	if (rc != SUCC) {
-		cerr << "Project: Fail to initialize scan " << rc << endl;
-		initStatus = false;
-		return;
 	}
 
 	initStatus = true;
 
 }
 Project::~Project(){
-	iter.close();
 }
 RC Project::getNextTuple(void *data) {
 	if (initStatus == false) {
 		cerr << "Project::getNextTuple: initialization failure, quit " << endl;
 		return QE_EOF;
 	}
-	RID rid;
-	if(iter.getNextTuple(rid, data) == RM_EOF) {
-		return QE_EOF;
-	} else {
-		return SUCC;
+	RC rc = iter->getNextTuple(tempData);
+	if (rc == RM_EOF || rc == IX_EOF || rc == QE_EOF) {
+		return rc;
 	}
+
+	char *returnData = (char*)data;
+	char *obtainData = (char*)tempData;
+	int len = 0;
+	// now check if the attribute exists
+	for (Attribute attr : originAttrs) {
+		if (checkExistAttrNames.count(attr.name) > 0) {
+			// contains the attribute. copy it to the data
+			copyData(returnData, obtainData, attr.type);
+			// move pointer
+			switch(attr.type) {
+			case TypeInt:
+				returnData += sizeof(int);
+				break;
+			case TypeReal:
+				returnData += sizeof(float);
+				break;
+			case TypeVarChar:
+				len = *((int *)returnData);
+				returnData += (sizeof(int) + len);
+				break;
+			}
+		}
+		// move pointer
+		switch(attr.type) {
+		case TypeInt:
+			obtainData += sizeof(int);
+			break;
+		case TypeReal:
+			obtainData += sizeof(float);
+			break;
+		case TypeVarChar:
+			len = *((int *)obtainData);
+			obtainData += (sizeof(int) + len);
+			break;
+		}
+	}
+	return SUCC;
 }
 // For attribute in vector<Attribute>, name it as rel.attr
 void Project::getAttributes(vector<Attribute> &attrs) const{
-    attrs.clear();
-    attrs = this->attrs;
-    unsigned i;
-
-    // For attribute in vector<Attribute>, name it as rel.attr
-    for(i = 0; i < attrs.size(); ++i)
-    {
-        string tmp = tableName;
-        tmp += ".";
-        tmp += attrs[i].name;
-        attrs[i].name = tmp;
-    }
+	attrs.clear();
+	attrs = this->attrs;
 };
+
+void Project::copyData(void *dest, const void *src, const AttrType &type) {
+	int len;
+	switch(type) {
+	case TypeInt:
+		memcpy(dest, src, sizeof(int));
+		break;
+	case TypeReal:
+		memcpy(dest, src, sizeof(float));
+		break;
+	case TypeVarChar:
+		len = *((int *)src);
+		memcpy(dest, src, sizeof(int) + len);
+		break;
+	}
+}

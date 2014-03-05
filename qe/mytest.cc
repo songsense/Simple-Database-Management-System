@@ -599,7 +599,7 @@ int testCase_5() {
 		int offset = 0;
 
 		// Print right.C
-		cout << "left.C " << *(float *) ((char *) data + offset) << endl;
+		cout << "right.C " << *(float *) ((char *) data + offset) << endl;
 		offset += sizeof(float);
 
 		// Print right.D
@@ -1521,7 +1521,7 @@ int main() {
 	} else {
 		cerr << "fail test case 4" << endl;
 	}
-	/*
+
 	if (testCase_5() == success) {
 		g_nGradPoint += 3;
 		g_nUndergradPoint += 3;
@@ -1535,7 +1535,7 @@ int main() {
 	} else {
 		cerr << "fail test case 6" << endl;
 	}
-
+	/*
 	if (testCase_7() == success) {
 		g_nGradPoint += 5;
 		g_nUndergradExtraPoint += 3;

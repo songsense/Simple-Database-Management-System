@@ -2,6 +2,7 @@
 #define _qe_h_
 
 #include <vector>
+#include <unordered_set>
 
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
@@ -215,8 +216,6 @@ class Filter : public Iterator {
         void getAttributes(vector<Attribute> &attrs) const;
     private:
         Iterator *iter;
-        string tableName;
-        string conditionAttribute;
         string lhsAttr;
         CompOp compOp;
         AttrType type;
@@ -268,10 +267,13 @@ class Project : public Iterator {
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const;
     private:
-        string tableName;
         vector<Attribute> attrs;
+        vector<Attribute> originAttrs;
+        unordered_set<string> checkExistAttrNames;
         bool initStatus;
-        RM_ScanIterator iter;
+        Iterator *iter;
+        char tempData[PAGE_SIZE];
+        void copyData(void *dest, const void *src, const AttrType &type);
 };
 
 
