@@ -43,7 +43,7 @@ bool compareValueTemplate(T const &lhs, T const &rhs, const CompOp &compOp) {
 		break;
 	case GE_OP:
 		return lhs >= rhs;
-		  	 break;
+		break;
 	case NE_OP:
 		return lhs != rhs;
 		break;
@@ -332,13 +332,36 @@ class INLJoin : public Iterator {
                 IndexScan *rightIn,                             // IndexScan Iterator of input S
                 const Condition &condition,                     // Join condition
                 const unsigned numPages                         // Number of pages can be used to do join (decided by the optimizer)
-        ){};
+        );
 
-        ~INLJoin(){};
+        ~INLJoin();
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+    private:
+        Iterator *leftIter;
+        vector<Attribute> leftAttrs;
+        IndexScan *rightIter;
+        vector<Attribute> rightAttrs;
+        Condition condition;
+
+        AttrType compAttrType;
+        vector<Attribute> attrs;
+
+        unsigned numPages;
+        bool initStatus;
+
+        bool needLoadNextLeftValue;
+        char curLeftValue[PAGE_SIZE];
+        char curLeftConditionValue[PAGE_SIZE];
+        char curRightValue[PAGE_SIZE];
+        char curRightConditionValue[PAGE_SIZE];
+
+        RC getAttributeValue(char *data,
+        		char *attrData, const vector<Attribute> &attrs,
+        		const string &conditionAttr);
+        void setRightIterator(char *leftValue);
 };
 
 

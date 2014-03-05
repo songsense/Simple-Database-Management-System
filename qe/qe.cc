@@ -433,4 +433,154 @@ void NLJoin::getAttributes(vector<Attribute> &attrs) const {
 	attrs.clear();
 	attrs = this->attrs;
 };
+/*
+ *
+ * 				NLJoin
+ *
+ */
+/*
+struct Condition {
+    string lhsAttr;         // left-hand side attribute
+    CompOp  op;             // comparison operator
+    bool    bRhsIsAttr;     // TRUE if right-hand side is an attribute and not a value; FALSE, otherwise
+    string rhsAttr;         // right-hand side attribute if bRhsIsAttr = TRUE
+    Value   rhsValue;       // right-hand side value if bRhsIsAttr = FALSE
+};
+ */
+INLJoin::INLJoin(Iterator *leftIn,                             // Iterator of input R
+		IndexScan *rightIn,                           // IndexScan Iterator of input S
+        const Condition &condition,                   // Join condition
+        const unsigned numPages                       // Number of pages can be used to do join (decided by the optimizer)
+        ){
+	if (condition.bRhsIsAttr == false) {
+		initStatus = false;
+		return;
+	}
+	leftIter = leftIn;
+	leftIter->getAttributes(leftAttrs);
+	// set the compAttrType
+	// this is used to faster compare left and right given this type value
+	for (Attribute attr : leftAttrs) {
+		if (attr.name == condition.lhsAttr) {
+			compAttrType = attr.type;
+			break;
+		}
+	}
 
+	rightIter = rightIn;
+	rightIter->getAttributes(rightAttrs);
+
+	// set the attrs
+	attrs = leftAttrs;
+	for (Attribute attr : rightAttrs) {
+		attrs.push_back(attr);
+	}
+
+	this->condition = condition;
+	this->numPages = numPages;
+
+	needLoadNextLeftValue = true;
+	initStatus = true;
+}
+INLJoin::~INLJoin(){
+
+}
+RC INLJoin::getNextTuple(void *data){
+	if (initStatus == false) {
+		return QE_EOF;
+	}
+
+	RC rc;
+	do {
+		rc = rightIter->getNextTuple(curRightValue);
+		if (rc != SUCC) {
+			// need to load more outer data
+			needLoadNextLeftValue = true;
+		}
+		if (needLoadNextLeftValue == true) {
+			do {
+				rc = leftIter->getNextTuple(curLeftValue);
+				if (rc != SUCC) {
+					return QE_EOF;
+				}
+				// get current left condition value
+				rc = getAttributeValue(curLeftValue,
+						curLeftConditionValue, leftAttrs, condition.lhsAttr);
+				if (rc != SUCC) {
+					cerr << "Fail to find the left condition value by the attribute " << rc << endl;
+					return rc;
+				}
+				// set the needLoadNextLeftValue to be false
+				// next outer data ready
+				needLoadNextLeftValue = false;
+
+				// now reset the right iterator
+				setRightIterator(curLeftConditionValue);
+				// get the first right data
+			} while(rightIter->getNextTuple(curRightValue) == QE_EOF);
+		}
+
+		// successfully load the current inner data
+		// get current right condition value
+		rc = getAttributeValue(curRightValue,
+				curRightConditionValue, rightAttrs, condition.rhsAttr);
+		if (rc != SUCC) {
+			cerr << "Fail to find the right condition value by the attribute " << rc << endl;
+			return rc;
+		}
+		// compare values to see if need to return the value
+	} while (!compareValues(curLeftConditionValue, curRightConditionValue, condition.op, compAttrType));
+
+	// get the record size
+    int leftRecordSize = getRecordSize(curLeftValue, leftAttrs);
+    int rightRecordSize = getRecordSize(curRightValue, rightAttrs);
+    // copy data
+    char *returnData = (char *)data;
+    memcpy(returnData, curLeftValue, leftRecordSize);
+    memcpy(returnData + leftRecordSize, curRightValue, rightRecordSize);
+
+	return SUCC;
+}
+void INLJoin::setRightIterator(char *leftValue) {
+	switch(condition.op) {
+	case EQ_OP:
+		rightIter->setIterator(leftValue, leftValue, true, true);
+		break;
+	case LT_OP:
+		rightIter->setIterator(leftValue, NULL, false, true);
+		break;
+	case GT_OP:
+		rightIter->setIterator(NULL, leftValue, true, false);
+		break;
+	case LE_OP:
+		rightIter->setIterator(leftValue, NULL, true, true);
+		break;
+	case GE_OP:
+		rightIter->setIterator(NULL, leftValue, true, true);
+		break;
+	case NE_OP:
+		rightIter->setIterator(NULL, NULL, true, true);
+		break;
+	default:
+		rightIter->setIterator(NULL, NULL, true, true);
+	}
+}
+RC INLJoin::getAttributeValue(char *data,
+		char *attrData, const vector<Attribute> &attrs,
+		const string &conditionAttr) {
+	char *val = data;
+	for (Attribute attr : attrs) {
+		if (attr.name == conditionAttr) {
+			copyData(attrData, val, attr.type);
+			return SUCC;
+		}
+		movePointer(val, attr.type);
+	}
+	return QE_FAIL_TO_FIND_CONDITION_ATTRIBUTE;
+}
+
+// For attribute in vector<Attribute>, name it as rel.attr
+void INLJoin::getAttributes(vector<Attribute> &attrs) const {
+	attrs.clear();
+	attrs = this->attrs;
+};
