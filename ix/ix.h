@@ -88,6 +88,7 @@ class IndexManager {
   //     For varchar: use 4 bytes to store the length of characters, then store the actual characters.
   RC insertEntry(FileHandle &fileHandle, const Attribute &attribute, const void *key, const RID &rid);  // Insert new index entry
   RC deleteEntry(FileHandle &fileHandle, const Attribute &attribute, const void *key, const RID &rid);  // Delete index entry
+  RC deleteEntries(FileHandle &fileHandle); // delete all entries
 
   // scan() returns an iterator to allow the caller to go through the results
   // one by one in the range(lowKey, highKey).

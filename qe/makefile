@@ -1,7 +1,7 @@
 
 include ../makefile.inc
 
-all: libqe.a qetest
+all: libqe.a qetest mytest
 
 # lib file dependencies
 libqe.a: libqe.a(qe.o)  # and possibly other .o files

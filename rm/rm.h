@@ -12,6 +12,7 @@
 using namespace std;
 
 #define RM_CANNOT_FIND_ATTRIBUTE 80
+#define RM_CANNOT_FIND 81
 
 typedef unsigned AttrNumber;
 
@@ -120,12 +121,23 @@ private:
 		  const VersionNumber &ver, const unsigned &recordSize);
   RC openTable(const string &tableName, FileHandle *&fileHandle);
   RC closeTable(const string &tableName);
+  void makeIndexName(const string &tableName, const string &attributeName,
+		  string &indexName);
+  RC openIndex(const string &tableName,
+		  const string &attributeName, FileHandle *&fileHandle);
+  RC closeIndex(const string &tableName, const string &attributeName);
+  bool isIndexOpen(const string &tableName, const string &attributeName);
+  RC insertIndex(const string &tableName, const RID &rid);
+  RC deleteIndex(const string &tableName, const RID &rid);
+  RC deleteIndices(const string &tableName);
   // get the record size: start from the second attr excluding the Ver
   unsigned getRecordSize(const void *formattedData,
 		  const vector<Attribute> &recordDescriptor);
   // get specific attribute
   RC getSpecificAttribute(const string &tableName, const string &attributeName, Attribute &attr);
-  unordered_map<string, FileHandle *> cachedFileHandle;
+  unordered_map<string, FileHandle *> cachedTableFileHandles;
+  unordered_map<string, FileHandle*> cachedIndexFileHandles;
+  unordered_map<string, Attribute> cachedAttributes;
 };
 
 #endif

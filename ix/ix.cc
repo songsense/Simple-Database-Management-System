@@ -292,6 +292,22 @@ RC IndexManager::deleteEntry(FileHandle &fileHandle, const Attribute &attribute,
 	return rc;
 }
 
+// delete all entries
+RC IndexManager::deleteEntries(FileHandle &fileHandle) {
+	RC rc;
+	SpaceManager *sp = SpaceManager::instance();
+
+	// get all number of pages
+	PageNum totalPageNum = fileHandle.getNumberOfPages();
+	for (PageNum pn = 1; pn < totalPageNum; ++pn) {
+		rc = sp->putEmptyPage(fileHandle, pn);
+		if (rc != SUCC) {
+			cerr << "deleteEntries: error write to page " << rc << endl;
+			return rc;
+		}
+	}
+	return SUCC;
+}
 
 // scan() returns an iterator to allow the caller to go through the results
 // one by one in the range(lowKey, highKey).

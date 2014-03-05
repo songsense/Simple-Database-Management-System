@@ -1018,6 +1018,7 @@ bool RBFM_ScanIterator::compareString(const string &lhs, const string &rhs) {
 RC RBFM_ScanIterator::close() {
 	if (value != NULL)
 		delete []value;
+	value = NULL;
 	return SUCC;
 }
 /*

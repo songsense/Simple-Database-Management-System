@@ -4,14 +4,56 @@
 RelationManager* RelationManager::_rm = 0;
 
 RC RelationManager::createIndex(const string &tableName, const string &attributeName) {
-	//TODO
 	RC rc;
 	IndexManager *ix = IndexManager::instance();
+	string indexName;
+	makeIndexName(tableName, attributeName, indexName);
 
-	rc = ix->createFile(tableName + "_" + attributeName);
+	rc = ix->createFile(indexName);
 	if (rc != SUCC) {
 		cerr << "createIndex: createFile error " << rc << endl;
 		return rc;
+	}
+
+	FileHandle *indexFileHandle;
+	rc = openIndex(tableName, attributeName, indexFileHandle);
+	if (rc != SUCC) {
+		cerr << "createIndex: open index error " << rc << endl;
+		return rc;
+	}
+
+	FileHandle *tableFileHandle;
+	rc = openTable(tableName, tableFileHandle);
+	if (rc != SUCC) {
+		cerr << "createIndex: open table error " << rc << endl;
+		return rc;
+	}
+
+	vector<string> attributeNames;
+	attributeNames.push_back(attributeName);
+
+	RM_ScanIterator rmsi;
+
+	rc = scan(tableName, "", NO_OP, NULL, attributeNames, rmsi);
+	if (rc != SUCC) {
+		cerr << "createIndex: scan table error " << rc << endl;
+		return rc;
+	}
+
+	RID rid;
+	char returnedData[PAGE_SIZE];
+	Attribute attr;
+	rc = getSpecificAttribute(tableName, attributeName, attr);
+	if (rc != SUCC) {
+		cerr << "createIndex: getSpecificAttribute error " << rc << endl;
+		return rc;
+	}
+	while(rmsi.getNextTuple(rid, returnedData) != RM_EOF) {
+		rc = ix->insertEntry(*indexFileHandle, attr, returnedData, rid);
+		if (rc != SUCC) {
+			cerr << "createIndex: insertEntry error " << rc << endl;
+			return rc;
+		}
 	}
 
 	return SUCC;
@@ -20,8 +62,16 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 RC RelationManager::destroyIndex(const string &tableName, const string &attributeName) {
 	RC rc;
 	IndexManager *ix = IndexManager::instance();
+	string indexName;
+	makeIndexName(tableName, attributeName, indexName);
 
-	rc = ix->destroyFile(tableName + "_" + attributeName);
+	rc = closeIndex(tableName, attributeName);
+	if (rc != SUCC) {
+		cerr << "destroyIndex: closeIndex error " << rc << endl;
+		return rc;
+	}
+
+	rc = ix->destroyFile(indexName);
 	if (rc != SUCC) {
 		cerr << "destroyIndex: destroyFile error " << rc << endl;
 		return rc;
@@ -71,8 +121,10 @@ RC RelationManager::indexScan(const string &tableName,
 	RC rc;
 	IndexManager *ix = IndexManager::instance();
 	// open the file
-	FileHandle fileHandle;
-	rc = ix->openFile(tableName + "_" + attributeName, fileHandle);
+	string indexName;
+	makeIndexName(tableName, attributeName, indexName);
+	FileHandle *fileHandle;
+	rc = openIndex(tableName, attributeName, fileHandle);
 	if (rc != SUCC) {
 		cerr << "indexScan: open index file error " << rc << endl;
 		return rc;
@@ -85,15 +137,9 @@ RC RelationManager::indexScan(const string &tableName,
 		return rc;
 	}
 
-	rc = ix->scan(fileHandle, attr, lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_scanIterator);
+	rc = ix->scan(*fileHandle, attr, lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_scanIterator);
 	if (rc != SUCC) {
 		cerr << "indexScan: scan error " << rc << endl;
-		return rc;
-	}
-
-	rc = ix->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "indexScan: close index file error " << rc << endl;
 		return rc;
 	}
 
@@ -236,15 +282,15 @@ RC RelationManager::openTable(const string &tableName, FileHandle *&fileHandle) 
 	RC rc;
 	VersionManager *vm = VersionManager::instance();
 
-	if (cachedFileHandle.count(tableName) > 0) {
-		fileHandle = cachedFileHandle[tableName];
+	if (cachedTableFileHandles.count(tableName) > 0) {
+		fileHandle = cachedTableFileHandles[tableName];
 		return SUCC;
 	}
 	FileHandle *fhandle = new FileHandle();
 
 	rc = rbfm->openFile(tableName, *fhandle);
 	if(rc != SUCC) {
-		cerr << "Open Table: error open file" << rc << endl;
+		cerr << "Open Table: error open file " << rc << endl;
 		return rc;
 	}
 
@@ -255,7 +301,7 @@ RC RelationManager::openTable(const string &tableName, FileHandle *&fileHandle) 
 	}
 
 	fileHandle = fhandle;
-	cachedFileHandle[tableName] = fhandle;
+	cachedTableFileHandles[tableName] = fhandle;
 
 	return SUCC;
 }
@@ -263,24 +309,213 @@ RC RelationManager::openTable(const string &tableName, FileHandle *&fileHandle) 
 RC RelationManager::closeTable(const string &tableName) {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 
-	if (cachedFileHandle.count(tableName) == 0) {
+	if (cachedTableFileHandles.count(tableName) == 0) {
 		return SUCC;
 	}
 
-	FileHandle *fhandle = cachedFileHandle[tableName];
+	FileHandle *fhandle = cachedTableFileHandles[tableName];
 
 	RC rc = rbfm->closeFile(*fhandle);
 	if (rc != SUCC) {
-		cerr << "Open Table: error close file" << rc << endl;
+		cerr << "Open Table: error close file " << rc << endl;
 		return rc;
 	}
 
-	cachedFileHandle.erase(tableName);
+	cachedTableFileHandles.erase(tableName);
 	delete fhandle;
 
 	return SUCC;
 }
 
+void RelationManager::makeIndexName(const string &tableName, const string &attributeName,
+		  string &indexName) {
+	indexName = tableName + "_" + attributeName;
+}
+
+RC RelationManager::openIndex(const string &tableName,
+		  const string &attributeName, FileHandle *&fileHandle) {
+	RC rc;
+	IndexManager *ix = IndexManager::instance();
+	string indexName;
+	makeIndexName(tableName, attributeName, indexName);
+	if (cachedIndexFileHandles.count(indexName) > 0) {
+		fileHandle = cachedIndexFileHandles[indexName];
+		return SUCC;
+	}
+
+	// cannot find a file handle, must new one
+	FileHandle *fhandle = new FileHandle();
+	rc = ix->openFile(indexName, *fhandle);
+	if(rc != SUCC) {
+		cerr << "Open Index: error open file " << rc << endl;
+		return rc;
+	}
+	// cache the file handle of the index file
+	fileHandle = fhandle;
+	cachedIndexFileHandles[indexName] = fhandle;
+
+	// cache the attribute of the index file
+	Attribute attr;
+	rc = getSpecificAttribute(tableName, attributeName, attr);
+	if(rc != SUCC) {
+		cerr << "Open Index: error getSpecificAttribute " << rc << endl;
+		return rc;
+	}
+	cachedAttributes[indexName] = attr;
+
+	return SUCC;
+}
+RC RelationManager::closeIndex(const string &tableName, const string &attributeName) {
+	IndexManager *ix = IndexManager::instance();
+	string indexName;
+	makeIndexName(tableName, attributeName, indexName);
+
+	if (cachedIndexFileHandles.count(indexName) == 0) {
+		return SUCC;
+	}
+
+	FileHandle *fhandle = cachedTableFileHandles[indexName];
+
+	RC rc = ix->closeFile(*fhandle);
+	if (rc != SUCC) {
+		cerr << "closeIndex: error close file " << rc << endl;
+		return rc;
+	}
+
+	cachedIndexFileHandles.erase(indexName);
+	delete fhandle;
+
+	cachedAttributes.erase(indexName);
+
+	return SUCC;
+}
+
+bool RelationManager::isIndexOpen(const string &tableName, const string &attributeName) {
+	string indexName;
+	makeIndexName(tableName, attributeName, indexName);
+	if (cachedIndexFileHandles.count(indexName) == 0 ||
+			cachedAttributes.count(indexName) == 0) {
+		return false;
+	} else {
+		return true;
+	}
+
+}
+
+RC RelationManager::insertIndex(const string &tableName, const RID &rid) {
+	RC rc;
+	vector<Attribute> attrs;
+	IndexManager *ix = IndexManager::instance();
+
+	// get attribute
+	rc = getAttributes(tableName, attrs);
+	if (rc != SUCC) {
+		cerr << "insertIndex: getAttributes error " << rc << endl;
+		return rc;
+	}
+
+	char key[PAGE_SIZE];
+
+	// iterate to see it there exists an index file
+	for (Attribute attr : attrs) {
+		if (isIndexOpen(tableName, attr.name)) {
+			// open the index file
+			FileHandle *fileHandle;
+			rc = openIndex(tableName, attr.name, fileHandle);
+			if (rc != SUCC) {
+				cerr << "insertIndex: openIndex error " << rc << endl;
+				return rc;
+			}
+			// read the key
+			rc = readAttribute(tableName, rid, attr.name, key);
+			if (rc != SUCC) {
+				cerr << "insertIndex: readAttribute error " << rc << endl;
+				return rc;
+			}
+			// insert the key into the index file
+			rc = ix->insertEntry(*fileHandle, attr, key, rid);
+			if (rc != SUCC) {
+				cerr << "insertIndex: insertEntry error " << rc << endl;
+				return rc;
+			}
+		}
+	}
+	return SUCC;
+}
+RC RelationManager::deleteIndex(const string &tableName, const RID &rid) {
+	RC rc;
+	vector<Attribute> attrs;
+	IndexManager *ix = IndexManager::instance();
+
+	// get attribute
+	rc = getAttributes(tableName, attrs);
+	if (rc != SUCC) {
+		cerr << "deleteIndex: getAttributes error " << rc << endl;
+		return rc;
+	}
+
+	char key[PAGE_SIZE];
+
+	// iterate to see it there exists an index file
+	for (Attribute attr : attrs) {
+		if (isIndexOpen(tableName, attr.name)) {
+			// open the index file
+			FileHandle *fileHandle;
+			rc = openIndex(tableName, attr.name, fileHandle);
+			if (rc != SUCC) {
+				cerr << "deleteIndex: openIndex error " << rc << endl;
+				return rc;
+			}
+			// read the key
+			rc = readAttribute(tableName, rid, attr.name, key);
+			if (rc != SUCC) {
+				cerr << "insertIndex: readAttribute error " << rc << endl;
+				return rc;
+			}
+			// insert the key into the index file
+			rc = ix->deleteEntry(*fileHandle, attr, key, rid);
+			if (rc != SUCC) {
+				cerr << "insertIndex: insertEntry error " << rc << endl;
+				return rc;
+			}
+		}
+	}
+	return SUCC;
+}
+RC RelationManager::deleteIndices(const string &tableName) {
+	RC rc;
+	vector<Attribute> attrs;
+	IndexManager *ix = IndexManager::instance();
+
+	// get attribute
+	rc = getAttributes(tableName, attrs);
+	if (rc != SUCC) {
+		cerr << "deleteIndices: getAttributes error " << rc << endl;
+		return rc;
+	}
+
+	char key[PAGE_SIZE];
+
+	// iterate to see it there exists an index file
+	for (Attribute attr : attrs) {
+		if (isIndexOpen(tableName, attr.name)) {
+			// open the index file
+			FileHandle *fileHandle;
+			rc = openIndex(tableName, attr.name, fileHandle);
+			if (rc != SUCC) {
+				cerr << "deleteIndices: openIndex error " << rc << endl;
+				return rc;
+			}
+			// delete all
+			rc = ix->deleteEntries(*fileHandle);
+			if (rc != SUCC) {
+				cerr << "deleteIndices: deleteEntries error " << rc << endl;
+				return rc;
+			}
+		}
+	}
+	return SUCC;
+}
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
@@ -329,6 +564,12 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 		return rc;
 	}
 
+	// insert to the index
+	rc = insertIndex(tableName, rid);
+	if (rc != SUCC) {
+		cerr << "insertTuple: insert index error " << rc << endl;
+		return rc;
+	}
 
     return SUCC;
 }
@@ -337,6 +578,8 @@ RC RelationManager::deleteTuples(const string &tableName)
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	RC rc;
+
+	deleteIndices(tableName);
 
 	// open the file
 	FileHandle *fileHandle;
@@ -360,6 +603,13 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	RC rc;
+
+	// delete from the index
+	rc = deleteIndex(tableName, rid);
+	if (rc != SUCC) {
+		cerr << "deleteTuples: insert index error " << rc << endl;
+		return rc;
+	}
 
 	// open the file
 	FileHandle *fileHandle;
