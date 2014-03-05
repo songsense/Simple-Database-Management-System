@@ -31,11 +31,17 @@
 							<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.base.2088849352" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.base">
 								<option id="gnu.cpp.compiler.option.optimization.level.1823185484" name="Optimization Level" superClass="gnu.cpp.compiler.option.optimization.level" value="gnu.cpp.compiler.optimization.level.none" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.option.debugging.level.754205719" name="Debug Level" superClass="gnu.cpp.compiler.option.debugging.level" value="gnu.cpp.compiler.debugging.level.max" valueType="enumerated"/>
+								<option id="gnu.cpp.compiler.option.preprocessor.def.27078660" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.329083458" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.compiler.base.445914368" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.base">
 								<option defaultValue="gnu.c.optimization.level.none" id="gnu.c.compiler.option.optimization.level.355414354" name="Optimization Level" superClass="gnu.c.compiler.option.optimization.level" valueType="enumerated"/>
 								<option id="gnu.c.compiler.option.debugging.level.235027990" name="Debug Level" superClass="gnu.c.compiler.option.debugging.level" value="gnu.c.debugging.level.max" valueType="enumerated"/>
+								<option id="gnu.c.compiler.option.preprocessor.def.symbols.1918756453" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1131621548" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.base.915680684" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.base"/>
@@ -86,11 +92,17 @@
 							<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.release.2040790521" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.release">
 								<option id="gnu.cpp.compiler.macosx.exe.release.option.optimization.level.1512773864" name="Optimization Level" superClass="gnu.cpp.compiler.macosx.exe.release.option.optimization.level" value="gnu.cpp.compiler.optimization.level.most" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.macosx.exe.release.option.debugging.level.139238948" name="Debug Level" superClass="gnu.cpp.compiler.macosx.exe.release.option.debugging.level" value="gnu.cpp.compiler.debugging.level.none" valueType="enumerated"/>
+								<option id="gnu.cpp.compiler.option.preprocessor.def.34563969" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.522549366" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.release.1993021732" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.release">
 								<option defaultValue="gnu.c.optimization.level.most" id="gnu.c.compiler.macosx.exe.release.option.optimization.level.772008333" name="Optimization Level" superClass="gnu.c.compiler.macosx.exe.release.option.optimization.level" valueType="enumerated"/>
 								<option id="gnu.c.compiler.macosx.exe.release.option.debugging.level.1679011965" name="Debug Level" superClass="gnu.c.compiler.macosx.exe.release.option.debugging.level" value="gnu.c.debugging.level.none" valueType="enumerated"/>
+								<option id="gnu.c.compiler.option.preprocessor.def.symbols.426580565" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1391554651" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 						</toolChain>
@@ -131,11 +143,17 @@
 							<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.debug.924558396" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.debug">
 								<option id="gnu.cpp.compilermacosx.exe.debug.option.optimization.level.1137343789" name="Optimization Level" superClass="gnu.cpp.compilermacosx.exe.debug.option.optimization.level" value="gnu.cpp.compiler.optimization.level.none" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.macosx.exe.debug.option.debugging.level.718585842" name="Debug Level" superClass="gnu.cpp.compiler.macosx.exe.debug.option.debugging.level" value="gnu.cpp.compiler.debugging.level.max" valueType="enumerated"/>
+								<option id="gnu.cpp.compiler.option.preprocessor.def.2119605241" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.360649516" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.debug.1645891392" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.debug">
 								<option defaultValue="gnu.c.optimization.level.none" id="gnu.c.compiler.macosx.exe.debug.option.optimization.level.594415662" name="Optimization Level" superClass="gnu.c.compiler.macosx.exe.debug.option.optimization.level" valueType="enumerated"/>
 								<option id="gnu.c.compiler.macosx.exe.debug.option.debugging.level.1457382986" name="Debug Level" superClass="gnu.c.compiler.macosx.exe.debug.option.debugging.level" value="gnu.c.debugging.level.max" valueType="enumerated"/>
+								<option id="gnu.c.compiler.option.preprocessor.def.symbols.1054515811" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.47573622" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 						</toolChain>
@@ -176,11 +194,17 @@
 							<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.release.555568077" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.release">
 								<option id="gnu.cpp.compiler.macosx.exe.release.option.optimization.level.1878984183" name="Optimization Level" superClass="gnu.cpp.compiler.macosx.exe.release.option.optimization.level" value="gnu.cpp.compiler.optimization.level.most" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.macosx.exe.release.option.debugging.level.464631520" name="Debug Level" superClass="gnu.cpp.compiler.macosx.exe.release.option.debugging.level" value="gnu.cpp.compiler.debugging.level.none" valueType="enumerated"/>
+								<option id="gnu.cpp.compiler.option.preprocessor.def.1884541715" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.1400192811" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.release.658673125" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.release">
 								<option defaultValue="gnu.c.optimization.level.most" id="gnu.c.compiler.macosx.exe.release.option.optimization.level.1175879899" name="Optimization Level" superClass="gnu.c.compiler.macosx.exe.release.option.optimization.level" valueType="enumerated"/>
 								<option id="gnu.c.compiler.macosx.exe.release.option.debugging.level.1073970431" name="Debug Level" superClass="gnu.c.compiler.macosx.exe.release.option.debugging.level" value="gnu.c.debugging.level.none" valueType="enumerated"/>
+								<option id="gnu.c.compiler.option.preprocessor.def.symbols.691464194" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__GXX_EXPERIMENTAL_CXX0X__"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.406610107" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 						</toolChain>
@@ -210,26 +234,38 @@
 		</configuration>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
+	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 	<storageModule moduleId="scannerConfiguration">
 		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.;cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.debug.1150140597;cdt.managedbuild.tool.gnu.cpp.compiler.input.1036666505">
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174.;cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.debug.924558396;cdt.managedbuild.tool.gnu.cpp.compiler.input.360649516">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.macosx.exe.release.846457549;cdt.managedbuild.config.macosx.exe.release.846457549.;cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.release.1993021732;cdt.managedbuild.tool.gnu.c.compiler.input.1391554651">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.macosx.exe.release.846457549;cdt.managedbuild.config.macosx.exe.release.846457549.;cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.release.2040790521;cdt.managedbuild.tool.gnu.cpp.compiler.input.522549366">
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174.;cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.debug.1645891392;cdt.managedbuild.tool.gnu.c.compiler.input.47573622">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.;cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.debug.1150140597;cdt.managedbuild.tool.gnu.cpp.compiler.input.1036666505">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.macosx.exe.release.846457549.306240863;cdt.managedbuild.config.macosx.exe.release.846457549.306240863.;cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.release.658673125;cdt.managedbuild.tool.gnu.c.compiler.input.406610107">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.macosx.exe.release.846457549.306240863;cdt.managedbuild.config.macosx.exe.release.846457549.306240863.;cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.release.555568077;cdt.managedbuild.tool.gnu.cpp.compiler.input.1400192811">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.;cdt.managedbuild.tool.gnu.c.compiler.base.445914368;cdt.managedbuild.tool.gnu.c.compiler.input.1131621548">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.;cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.debug.1399909425;cdt.managedbuild.tool.gnu.c.compiler.input.731020273">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174.;cdt.managedbuild.tool.gnu.c.compiler.macosx.exe.debug.1645891392;cdt.managedbuild.tool.gnu.c.compiler.input.47573622">
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.macosx.exe.release.846457549;cdt.managedbuild.config.macosx.exe.release.846457549.;cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.release.2040790521;cdt.managedbuild.tool.gnu.cpp.compiler.input.522549366">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.43681174.;cdt.managedbuild.tool.gnu.cpp.compiler.macosx.exe.debug.924558396;cdt.managedbuild.tool.gnu.cpp.compiler.input.360649516">
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704;cdt.managedbuild.config.gnu.macosx.exe.debug.1356535704.;cdt.managedbuild.tool.gnu.cpp.compiler.base.2088849352;cdt.managedbuild.tool.gnu.cpp.compiler.input.329083458">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 	</storageModule>
-	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 </cproject>

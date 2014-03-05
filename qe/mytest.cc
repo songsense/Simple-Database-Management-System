@@ -672,6 +672,7 @@ int testCase_6() {
 		offset += sizeof(int);
 
 		if (valueB < 20 || valueB > 109) {
+			cerr << "expected [20,109], while have " << valueB << endl;
 			rc = fail;
 			goto clean_up;
 		}
@@ -689,6 +690,7 @@ int testCase_6() {
 	}
 
 	if (expectedResultCnt != actualResultCnt) {
+		cerr << "expected cnt " << expectedResultCnt << "\twhile have " << actualResultCnt << endl;
 		rc = fail;
 	}
 

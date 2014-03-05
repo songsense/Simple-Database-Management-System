@@ -13,10 +13,47 @@
 using namespace std;
 
 #define QE_FAIL_TO_SPLIT_TABLE_ATTRIBUTE 110
+#define QE_FAIL_TO_FIND_CONDITION_ATTRIBUTE 111
+#define QE_FAIL_TO_LOAD_INNER_DATA 112
 
 // get the table and condition attribute name from table.attribute
 RC getTableAttributeName(const string &tableAttribute,
 		string &table, string &attribute);
+// copy the data according to the type
+void copyData(void *dest, const void *src, const AttrType &type);
+// move the pointer according to the type
+void movePointer(char *&data, const AttrType &type);
+// compare values
+bool compareValues(const char *lhs, const char *rhs,
+		const CompOp &compOp, const AttrType &type);
+template <typename T>
+bool compareValueTemplate(T const &lhs, T const &rhs, const CompOp &compOp) {
+	switch(compOp) {
+	case EQ_OP:
+		return lhs == rhs;
+		break;
+	case LT_OP:
+		return lhs < rhs;
+		break;
+	case GT_OP:
+		return lhs > rhs;
+		break;
+	case LE_OP:
+		return lhs <= rhs;
+		break;
+	case GE_OP:
+		return lhs >= rhs;
+		  	 break;
+	case NE_OP:
+		return lhs != rhs;
+		break;
+	default:
+		return true;
+	}
+	return true;
+}
+// get a record size according to the attributes
+int getRecordSize(char *data, const vector<Attribute> &attrs);
 
 typedef enum{ MIN = 0, MAX, SUM, AVG, COUNT } AggregateOp;
 
@@ -227,32 +264,6 @@ class Filter : public Iterator {
 
     	void copyValue(const Value &input);
     	bool compareValue(void *input);
-    	template <typename T>
-    	bool compareValueTemplate(T const &lhs, T const &rhs) {
-    		switch(compOp) {
-    		case EQ_OP:
-    			return lhs == rhs;
-    			break;
-    		case LT_OP:
-    			return lhs < rhs;
-    			break;
-    		case GT_OP:
-    			return lhs > rhs;
-    			break;
-    		case LE_OP:
-    			return lhs <= rhs;
-    			break;
-    		case GE_OP:
-    			return lhs >= rhs;
-  			  	 break;
-    		case NE_OP:
-    			return lhs != rhs;
-    			break;
-    		default:
-    			return true;
-    		}
-    		return true;
-    	}
 };
 
 
@@ -273,7 +284,6 @@ class Project : public Iterator {
         bool initStatus;
         Iterator *iter;
         char tempData[PAGE_SIZE];
-        void copyData(void *dest, const void *src, const AttrType &type);
 };
 
 
@@ -284,14 +294,34 @@ class NLJoin : public Iterator {
                TableScan *rightIn,                           // TableScan Iterator of input S
                const Condition &condition,                   // Join condition
                const unsigned numPages                       // Number of pages can be used to do join (decided by the optimizer)
-        ){};
-        ~NLJoin(){};
+        );
+        ~NLJoin();
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
     private:
+        Iterator *leftIter;
+        vector<Attribute> leftAttrs;
+        TableScan *rightIter;
+        vector<Attribute> rightAttrs;
+        Condition condition;
 
+        AttrType compAttrType;
+        vector<Attribute> attrs;
+
+        unsigned numPages;
+        bool initStatus;
+
+        bool needLoadNextLeftValue;
+        char curLeftValue[PAGE_SIZE];
+        char curLeftConditionValue[PAGE_SIZE];
+        char curRightValue[PAGE_SIZE];
+        char curRightConditionValue[PAGE_SIZE];
+
+        RC getAttributeValue(char *data,
+        		char *attrData, const vector<Attribute> &attrs,
+        		const string &conditionAttr);
 };
 
 
