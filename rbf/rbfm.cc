@@ -850,7 +850,6 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 		for (SlotNum slotNum = curRid.slotNum+1;
 				flag_NOT_EOF && slotNum <= totalSlotNum; ++slotNum) {
 			// read the current data
-			RID rid;
 			rid.pageNum = pageNum;
 			rid.slotNum = slotNum;
 
