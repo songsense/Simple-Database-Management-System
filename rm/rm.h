@@ -110,7 +110,9 @@ public:
 protected:
   RelationManager();
   ~RelationManager();
-
+public:
+  // get specific attribute
+  RC getSpecificAttribute(const string &tableName, const string &attributeName, Attribute &attr);
 private:
   static RelationManager *_rm;
   char tuple[PAGE_SIZE];
@@ -133,8 +135,6 @@ private:
   // get the record size: start from the second attr excluding the Ver
   unsigned getRecordSize(const void *formattedData,
 		  const vector<Attribute> &recordDescriptor);
-  // get specific attribute
-  RC getSpecificAttribute(const string &tableName, const string &attributeName, Attribute &attr);
   unordered_map<string, FileHandle *> cachedTableFileHandles;
   unordered_map<string, FileHandle*> cachedIndexFileHandles;
   unordered_map<string, Attribute> cachedAttributes;

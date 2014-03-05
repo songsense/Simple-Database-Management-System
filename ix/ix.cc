@@ -469,6 +469,7 @@ RC IX_ScanIterator::close()
 	rids.clear();
 	for (size_t i = 0; i < keys.size(); ++i) {
 		delete []keys[i];
+		keys[i] = NULL;
 	}
 	keys.clear();
 	return SUCC;

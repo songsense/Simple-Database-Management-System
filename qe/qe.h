@@ -13,6 +13,9 @@ using namespace std;
 
 #define QE_FAIL_TO_SPLIT_TABLE_ATTRIBUTE 110
 
+// get the table and condition attribute name from table.attribute
+RC getTableAttributeName(const string &tableAttribute,
+		string &table, string &attribute);
 
 typedef enum{ MIN = 0, MAX, SUM, AVG, COUNT } AggregateOp;
 
@@ -214,8 +217,6 @@ class Filter : public Iterator {
 
     	RM_ScanIterator iter;
     	bool initStatus;
-    	// get the table and condition attribute name from condition's lhsAttr
-    	RC getTableAttributeName(const string &tableAttribute, string &table, string &attribute);
 };
 
 
@@ -223,12 +224,17 @@ class Project : public Iterator {
     // Projection operator
     public:
         Project(Iterator *input,                            // Iterator of input R
-                const vector<string> &attrNames){};           // vector containing attribute names
-        ~Project(){};
+                const vector<string> &attrNames);           // vector containing attribute names
+        ~Project();
 
-        RC getNextTuple(void *data) {return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+    private:
+        string tableName;
+        vector<Attribute> attrs;
+        bool initStatus;
+        RM_ScanIterator iter;
 };
 
 

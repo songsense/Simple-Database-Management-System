@@ -1,6 +1,31 @@
 
 #include "qe.h"
-
+// get the table and condition attribute name from table.attribute
+RC getTableAttributeName(const string &tableAttribute,
+		string &table, string &attribute) {
+	RC rc = QE_FAIL_TO_SPLIT_TABLE_ATTRIBUTE;
+	table.clear();
+	attribute.clear();
+	bool hit = false;
+	for (char c : tableAttribute) {
+		if (c != '.') {
+			if (!hit) {
+				table.push_back(c);
+			} else {
+				attribute.push_back(c);
+			}
+		} else {
+			hit = true;
+			rc = SUCC;
+		}
+	}
+	return rc;
+}
+/*
+ *
+ * 				Filter
+ *
+ */
 Filter::Filter(Iterator* input, const Condition &condition) {
 	RelationManager *rm = RelationManager::instance();
 	RC rc;
@@ -81,24 +106,92 @@ void Filter::getAttributes(vector<Attribute> &attrs) const {
         attrs[i].name = tmp;
     }
 }
-// get the table and condition attribute name from condition's lhsAttr
-RC Filter::getTableAttributeName(const string &tableAttribute,
-		string &table, string &attribute) {
-	RC rc = QE_FAIL_TO_SPLIT_TABLE_ATTRIBUTE;
-	table.clear();
-	attribute.clear();
-	bool hit = false;
-	for (char c : tableAttribute) {
-		if (c != '.') {
-			if (!hit) {
-				table.push_back(c);
-			} else {
-				attribute.push_back(c);
-			}
-		} else {
-			hit = true;
-			rc = SUCC;
-		}
+/*
+ *
+ * 				Project
+ *
+ */
+// Iterator of input R
+// vector containing attribute names
+Project::Project(Iterator *input,
+		const vector<string> &attrNames) {
+	RelationManager *rm = RelationManager::instance();
+	RC rc;
+	if (attrNames.empty()) {
+		initStatus = false;
+		cerr << "Empty attribute names" << endl;
+		return;
 	}
-	return rc;
+
+	string tableName;
+	string attributeName;
+	vector<string> attributeNames;
+
+	rc = getTableAttributeName(attrNames[0], tableName, attributeName);
+	if (rc != SUCC) {
+		initStatus = false;
+		cerr << "Initialize Project failure: getTableAttributeName " << rc << endl;
+		return;
+	}
+	attributeNames.push_back(attributeName);
+	// get the attributes
+	rc = rm->getAttributes(tableName, attrs);
+	if (rc != SUCC) {
+		cerr << "Filter: Fail to get attributes " << rc << endl;
+		initStatus = false;
+		return;
+	}
+
+	// get the projected attributes
+	for (unsigned i = 1; i < attrNames.size(); ++i) {
+		rc = getTableAttributeName(attrNames[i], tableName, attributeName);
+		if (rc != SUCC) {
+			initStatus = false;
+			cerr << "Initialize Project failure: getTableAttributeName " << rc << endl;
+			return;
+		}
+		attributeNames.push_back(attributeName);
+	}
+
+	// initialize the scanner
+	rc = rm->scan(tableName, "",
+			NO_OP, NULL, attributeNames, iter);
+	if (rc != SUCC) {
+		cerr << "Project: Fail to initialize scan " << rc << endl;
+		initStatus = false;
+		return;
+	}
+
+	initStatus = true;
+
 }
+Project::~Project(){
+	iter.close();
+}
+RC Project::getNextTuple(void *data) {
+	if (initStatus == false) {
+		cerr << "Project::getNextTuple: initialization failure, quit " << endl;
+		return QE_EOF;
+	}
+	RID rid;
+	if(iter.getNextTuple(rid, data) == RM_EOF) {
+		return QE_EOF;
+	} else {
+		return SUCC;
+	}
+}
+// For attribute in vector<Attribute>, name it as rel.attr
+void Project::getAttributes(vector<Attribute> &attrs) const{
+    attrs.clear();
+    attrs = this->attrs;
+    unsigned i;
+
+    // For attribute in vector<Attribute>, name it as rel.attr
+    for(i = 0; i < attrs.size(); ++i)
+    {
+        string tmp = tableName;
+        tmp += ".";
+        tmp += attrs[i].name;
+        attrs[i].name = tmp;
+    }
+};

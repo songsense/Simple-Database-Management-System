@@ -1514,14 +1514,14 @@ int main() {
 	} else {
 		cerr << "fail test case 4" << endl;
 	}
-	/*
+
 	if (testCase_5() == success) {
 		g_nGradPoint += 3;
 		g_nUndergradPoint += 3;
 	} else {
 		cerr << "fail test case 5" << endl;
 	}
-
+	/*
 	if (testCase_6() == success) {
 		g_nGradPoint += 5;
 		g_nUndergradPoint += 10;
