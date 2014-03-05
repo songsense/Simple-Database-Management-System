@@ -68,6 +68,8 @@ class TableScan : public Iterator
 
             // Get Attributes from RM
             rm.getAttributes(tableName, attrs);
+            // jump the first, because it is the version number
+            attrs.erase(attrs.begin());
 
             // Get Attribute Names from RM
             unsigned i;
@@ -107,7 +109,7 @@ class TableScan : public Iterator
 
             // For attribute in vector<Attribute>, name it as rel.attr
             for(i = 0; i < attrs.size(); ++i)
-            {
+            { // jump the first, because it is the version number
                 string tmp = tableName;
                 tmp += ".";
                 tmp += attrs[i].name;
@@ -143,6 +145,8 @@ class IndexScan : public Iterator
 
             // Get Attributes from RM
             rm.getAttributes(tableName, attrs);
+            // jump the first, because it is the version number
+            attrs.erase(attrs.begin());
 
             // Call rm indexScan to get iterator
             iter = new RM_IndexScanIterator();
@@ -210,13 +214,46 @@ class Filter : public Iterator {
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const;
     private:
+        Iterator *iter;
         string tableName;
         string conditionAttribute;
+        string lhsAttr;
         CompOp compOp;
-        vector<Attribute> attrs;
+        AttrType type;
+        vector<Attribute> attributeNames;
 
-    	RM_ScanIterator iter;
+        char value[PAGE_SIZE];
+        char tempData[PAGE_SIZE];
     	bool initStatus;
+
+    	void copyValue(const Value &input);
+    	bool compareValue(void *input);
+    	template <typename T>
+    	bool compareValueTemplate(T const &lhs, T const &rhs) {
+    		switch(compOp) {
+    		case EQ_OP:
+    			return lhs == rhs;
+    			break;
+    		case LT_OP:
+    			return lhs < rhs;
+    			break;
+    		case GT_OP:
+    			return lhs > rhs;
+    			break;
+    		case LE_OP:
+    			return lhs <= rhs;
+    			break;
+    		case GE_OP:
+    			return lhs >= rhs;
+  			  	 break;
+    		case NE_OP:
+    			return lhs != rhs;
+    			break;
+    		default:
+    			return true;
+    		}
+    		return true;
+    	}
 };
 
 
@@ -251,6 +288,8 @@ class NLJoin : public Iterator {
         RC getNextTuple(void *data){return QE_EOF;};
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const{};
+    private:
+
 };
 
 

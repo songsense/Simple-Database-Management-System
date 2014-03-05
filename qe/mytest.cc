@@ -415,6 +415,7 @@ int testCase_2() {
 	if (rc != success) {
 		return rc;
 	}
+	cout << "begin create index for right c" << endl;
 	rc = createIndexforRightC();
 	if (rc != success) {
 		return rc;
@@ -466,6 +467,7 @@ int testCase_3() {
 		cout << "left.B " << valueB << endl;
 		offset += sizeof(int);
 		if (valueB > compVal) {
+			cerr << "get a valueB " << valueB << " which is greater than " << compVal << endl;
 			rc = fail;
 			goto clean_up;
 		}
@@ -476,10 +478,12 @@ int testCase_3() {
 		offset += sizeof(float);
 
 		if (valueA < 0 || valueA > 99) {
+			cerr << "get a valueA " << valueA << endl;
 			rc = fail;
 			goto clean_up;
 		}
 		if (valueC < 50 || valueC > 150) {
+			cerr << "get a valueC " << valueC << endl;
 			rc = fail;
 			goto clean_up;
 		}
@@ -489,6 +493,9 @@ int testCase_3() {
 	}
 
 	if (expectedResultCnt != actualResultCnt) {
+		cerr << "counter does not match\t";
+		cerr << "expectedResultCnt:" << expectedResultCnt;
+		cerr << "\tactualResultCnt:" << actualResultCnt << endl;
 		rc = fail;
 	}
 
@@ -504,7 +511,7 @@ int testCase_4() {
 	RC rc = success;
 	// Functions Tested
 	// 1. Filter -- IndexScan as input, on TypeReal attribute
-	cout << "****In Test Case 3****" << endl;
+	cout << "****In Test Case 4****" << endl;
 
 	IndexScan *is = new IndexScan(*rm, "right", "C");
 	float compVal = 100.0;
@@ -1514,14 +1521,14 @@ int main() {
 	} else {
 		cerr << "fail test case 4" << endl;
 	}
-
+	/*
 	if (testCase_5() == success) {
 		g_nGradPoint += 3;
 		g_nUndergradPoint += 3;
 	} else {
 		cerr << "fail test case 5" << endl;
 	}
-	/*
+
 	if (testCase_6() == success) {
 		g_nGradPoint += 5;
 		g_nUndergradPoint += 10;
