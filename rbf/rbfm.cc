@@ -799,7 +799,8 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 	rbfm_ScanIterator.projectedName = attributeNames;
 	// set the projected attr type
 	rbfm_ScanIterator.projectedType = projectedType;
-
+	// set the file handle
+	rbfm_ScanIterator.fHandle = &fileHandle;
 
 	return SUCC;
 }
@@ -808,8 +809,8 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
  * Iterator
  */
 RBFM_ScanIterator::RBFM_ScanIterator() :
-		compOp(NO_OP), value(NULL), totalPageNum(0), conditionType(TypeInt){
-
+		compOp(NO_OP), value(NULL), totalPageNum(0), conditionType(TypeInt),
+		fHandle(NULL){
 }
 RBFM_ScanIterator::~RBFM_ScanIterator() {
 	if (value != NULL)
@@ -820,9 +821,9 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 	VersionManager *vm = VersionManager::instance();
 	RC rc;
 
-	FileHandle fileHandle;
+	// FileHandle fileHandle;
 	// open file handle
-	rc = rbfm->openFile(tableName, fileHandle);
+	rc = rbfm->openFile(tableName, *fHandle);
 	if (rc != SUCC) {
 		cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
 		return rc;
@@ -836,7 +837,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 	for (PageNum pageNum = curRid.pageNum;
 			flag_NOT_EOF && pageNum < totalPageNum; ++pageNum) {
 		// read the page
-		rc = fileHandle.readPage(pageNum, page);
+		rc = fHandle->readPage(pageNum, page);
 		if (rc != SUCC) {
 			cerr << "RBFM_ScanIterator::getNextRecord: read page error " << rc << endl;
 			return rc;
@@ -863,7 +864,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			if (slotDir.recordLength == RECORD_DEL || slotDir.recordLength == RECORD_FORWARD)
 				continue;
 
-			rc = rbfm->readRecord(fileHandle, attrs, rid, tuple);
+			rc = rbfm->readRecord(*fHandle, attrs, rid, tuple);
 			if (rc != SUCC) {
 				cerr << "RBFM_ScanIterator::getNextRecord: read record error " << rc << endl;
 				return rc;
@@ -878,7 +879,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			}
 
 			// get the condition value
-			rc = rbfm->readAttribute(fileHandle, attrs, rid, conditionName, attrData);
+			rc = rbfm->readAttribute(*fHandle, attrs, rid, conditionName, attrData);
 			if (rc != SUCC) {
 				cerr << "RBFM_ScanIterator::getNextRecord: read attribute value error " << rc << endl;
 				return rc;
@@ -886,7 +887,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			// the value meets the requirement, prepare output data
 			if (value == NULL || conditionName.empty() ||
 					compareValue(attrData, conditionType)) {
-				rc = prepareData(fileHandle, attrs, rid, data);
+				rc = prepareData(*fHandle, attrs, rid, data);
 				if (rc != SUCC) {
 					cerr << "RBFM_ScanIterator::getNextRecord: prepare data error " << rc << endl;
 					return rc;
@@ -899,11 +900,11 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 					curRid.pageNum = rid.pageNum, curRid.slotNum = rid.slotNum;
 				}
 				// exit
-				rc = rbfm->closeFile(fileHandle);
-				if (rc != SUCC) {
-					cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
-					return rc;
-				}
+//				rc = rbfm->closeFile(fileHandle);
+//				if (rc != SUCC) {
+//					cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
+//					return rc;
+//				}
 				return SUCC;
 			}
 		}
@@ -912,11 +913,11 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			flag_NOT_EOF = false;
 	}
 
-	rc = rbfm->closeFile(fileHandle);
-	if (rc != SUCC) {
-		cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
-		return rc;
-	}
+//	rc = rbfm->closeFile(fileHandle);
+//	if (rc != SUCC) {
+//		cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
+//		return rc;
+//	}
 
 	return RBFM_EOF;
 

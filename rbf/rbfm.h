@@ -129,6 +129,7 @@ public:
   AttrType conditionType;
   vector<string> projectedName;
   vector<AttrType> projectedType;
+  FileHandle *fHandle;
   char page[PAGE_SIZE];
   char tuple[PAGE_SIZE];
   char attrData[PAGE_SIZE];
