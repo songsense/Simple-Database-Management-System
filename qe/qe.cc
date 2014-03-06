@@ -321,7 +321,7 @@ NLJoin::NLJoin(Iterator *leftIn,                             // Iterator of inpu
                TableScan *rightIn,                           // TableScan Iterator of input S
                const Condition &condition,                   // Join condition
                const unsigned numPages                       // Number of pages can be used to do join (decided by the optimizer)
-        ){
+        ) : blockBuffer(numPages, leftIn){
 	if (condition.bRhsIsAttr == false) {
 		initStatus = false;
 		return;
@@ -386,7 +386,8 @@ RC NLJoin::getNextTuple(void *data){
 		}
 
 		if (needLoadNextLeftValue == true) {
-			rc = leftIter->getNextTuple(curLeftValue);
+//			rc = leftIter->getNextTuple(curLeftValue);
+			rc = blockBuffer.getNextTuple(curLeftValue);
 			if (rc != SUCC) {
 				return QE_EOF;
 			}
@@ -401,7 +402,7 @@ RC NLJoin::getNextTuple(void *data){
 			// next outer data ready
 			needLoadNextLeftValue = false;
 		}
-		// comare values to see if need to return the value
+		// compare values to see if need to return the value
 	} while (!compareValues(curLeftConditionValue, curRightConditionValue, condition.op, compAttrType));
 
 	// get the record size
@@ -435,7 +436,7 @@ void NLJoin::getAttributes(vector<Attribute> &attrs) const {
 };
 /*
  *
- * 				NLJoin
+ * 				INLJoin
  *
  */
 /*
@@ -451,7 +452,7 @@ INLJoin::INLJoin(Iterator *leftIn,                             // Iterator of in
 		IndexScan *rightIn,                           // IndexScan Iterator of input S
         const Condition &condition,                   // Join condition
         const unsigned numPages                       // Number of pages can be used to do join (decided by the optimizer)
-        ){
+        ) : blockBuffer(numPages, leftIn) {
 	if (condition.bRhsIsAttr == false) {
 		initStatus = false;
 		return;
@@ -499,7 +500,8 @@ RC INLJoin::getNextTuple(void *data){
 		}
 		if (needLoadNextLeftValue == true) {
 			do {
-				rc = leftIter->getNextTuple(curLeftValue);
+//				rc = leftIter->getNextTuple(curLeftValue);
+				rc = blockBuffer.getNextTuple(curLeftValue);
 				if (rc != SUCC) {
 					return QE_EOF;
 				}
@@ -584,3 +586,94 @@ void INLJoin::getAttributes(vector<Attribute> &attrs) const {
 	attrs.clear();
 	attrs = this->attrs;
 };
+/*
+ *
+ * 				BlockBuffer
+ *
+ */
+BlockBuffer::BlockBuffer(unsigned numPages, Iterator *iter) :
+	size(numPages * PAGE_SIZE){
+	this->numPages = numPages;
+
+	// set buffer
+	// add one more page size in case overflow
+	buffer = new char[size+PAGE_SIZE];
+	curBufferPointer = buffer;
+	curIndex = 0;
+	bufferUsage = 0;
+
+	// set the iterator;
+	this->iter = iter;
+
+	// set attributes
+	iter->getAttributes(attrs);
+}
+BlockBuffer::~BlockBuffer() {
+	delete []buffer;
+}
+void BlockBuffer::loadNextBlock() {
+	// set the buffer index to be the beginning of the buffer
+	bufferUsage = 0;
+	curIndex = 0;
+	curBufferPointer = buffer;
+	// clear index of buffer
+	dataPositions.clear();
+	dataSizes.clear();
+
+	RC rc;
+
+	while (true) {
+		rc = iter->getNextTuple(inputBuffer);
+		// if there is no more tuple in the disk
+		// mark as end of tuples
+		if (rc == QE_EOF) {
+			break;
+		}
+
+		int recordSize = getRecordSize(inputBuffer, attrs);
+		// copy to the buffer
+		memcpy(curBufferPointer, inputBuffer, recordSize);
+		curBufferPointer += recordSize;
+		// add the data position to the index of buffer
+		dataPositions.push_back(bufferUsage);
+		// add the buffer size to he index of buffer
+		dataSizes.push_back(recordSize);
+		// update buffer size
+		bufferUsage += recordSize;
+
+		// if the buffer is full
+		// mark as more tuples waiting
+		if (bufferUsage >= size) {
+			break;
+		}
+	}
+}
+
+RC BlockBuffer::getNextTuple(void *data) {
+	if (curIndex == dataPositions.size()) {
+		// no buffer cached, load more
+		loadNextBlock();
+		cerr << "bufferUsage " << bufferUsage << endl;
+		cerr << "number of data " << dataSizes.size() << endl;
+		// retry to see if there is any more
+		if (curIndex == dataPositions.size()) {
+			// no buffer in disk either, quit
+			return QE_EOF;
+		}
+	}
+
+	// good! we have data
+	// get the position of data in the buffer
+	unsigned pos = dataPositions[curIndex];
+	// get the data size
+	unsigned recordSize = dataSizes[curIndex];
+	// copy the data
+	memcpy(data, buffer + pos, recordSize);
+
+	// index increment
+	++curIndex;
+
+	return SUCC;
+}
+
+

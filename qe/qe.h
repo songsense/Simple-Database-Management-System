@@ -87,6 +87,30 @@ class Iterator {
         virtual ~Iterator() {};
 };
 
+class BlockBuffer {
+private:
+	unsigned numPages;
+	const unsigned size;					// size = numPages * PAGE_SIZE
+	unsigned bufferUsage;				// current buffer size
+	Iterator *iter;
+
+	char *buffer;					// hold all data
+	char *curBufferPointer;			// record the location of each tuple
+
+	unsigned curIndex;
+	vector<unsigned> dataPositions;	// record the pos of each tuple in buffer
+	vector<unsigned> dataSizes;		// record the size of each tuple in the buffer
+
+	char inputBuffer[PAGE_SIZE];
+
+	vector<Attribute> attrs;
+private:
+	void loadNextBlock();
+public:
+	BlockBuffer(unsigned numPages, Iterator *iter);
+	~BlockBuffer();
+	RC getNextTuple(void *data);
+};
 
 class TableScan : public Iterator
 {
@@ -301,6 +325,7 @@ class NLJoin : public Iterator {
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const;
     private:
+        BlockBuffer blockBuffer;
         Iterator *leftIter;
         vector<Attribute> leftAttrs;
         TableScan *rightIter;
@@ -340,6 +365,7 @@ class INLJoin : public Iterator {
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const;
     private:
+        BlockBuffer blockBuffer;
         Iterator *leftIter;
         vector<Attribute> leftAttrs;
         IndexScan *rightIter;

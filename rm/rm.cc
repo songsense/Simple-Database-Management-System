@@ -494,8 +494,6 @@ RC RelationManager::deleteIndices(const string &tableName) {
 		return rc;
 	}
 
-	char key[PAGE_SIZE];
-
 	// iterate to see it there exists an index file
 	for (Attribute attr : attrs) {
 		if (isIndexOpen(tableName, attr.name)) {

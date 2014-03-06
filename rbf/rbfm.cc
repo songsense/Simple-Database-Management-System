@@ -823,11 +823,11 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 
 	// FileHandle fileHandle;
 	// open file handle
-	rc = rbfm->openFile(tableName, *fHandle);
-	if (rc != SUCC) {
-		cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
-		return rc;
-	}
+//	rc = rbfm->openFile(tableName, *fHandle);
+//	if (rc != SUCC) {
+//		cerr << "RBFM_ScanIterator::getNextRecord: open file error " << rc << endl;
+//		return rc;
+//	}
 
 	bool flag_NOT_EOF = true;
 	vector<Attribute> attrs;

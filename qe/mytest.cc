@@ -565,7 +565,9 @@ int testCase_4() {
 		cerr << "\tactualResultCnt:" << actualResultCnt << endl;
 		rc = fail;
 	}
-
+	while (filter->getNextTuple(data) != QE_EOF) {
+		cerr << "I should not be printed" << endl;
+	}
 clean_up:
 	delete filter;
 	delete is;
