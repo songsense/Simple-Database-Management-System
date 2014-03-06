@@ -116,7 +116,7 @@ public:
 	  return true;
   }
   // prepare the data
-  RC prepareData(FileHandle &fileHandle,
+  RC prepareData(char *readPage, FileHandle &fileHandle,
 		  const vector<Attribute> &recordDescriptor,
 		  const RID &rid, void *data);
 
@@ -124,6 +124,7 @@ public:
   char *value;
   PageNum totalPageNum;
   RID curRid;
+  PageNum prevPageNum;
   string tableName;
   string conditionName;
   AttrType conditionType;
@@ -258,6 +259,7 @@ public:
 
 
   RC readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+  RC readRecord(char *readPage, FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
   
   // This method will be mainly used for debugging/testing
   RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
@@ -306,6 +308,7 @@ public:
   RC updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid);
 
   RC readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string attributeName, void *data);
+  RC readAttribute(char *readPage, FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string attributeName, void *data);
 
   RC reorganizePage(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const unsigned pageNumber);
 

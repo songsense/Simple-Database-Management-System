@@ -136,6 +136,44 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 	rid.slotNum = nextAvailableSlot;
 	return SUCC;
 }
+
+RC RecordBasedFileManager::readRecord(char *readPage, FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data) {
+	RC rc;
+	// get slot directory
+	SlotDir slotDir;
+	rc = getSlotDir(readPage, slotDir, rid.slotNum);
+	// cout << "read slot num " << rid.slotNum << endl;
+	if (rc != SUCC) {
+		cerr << "Read record: Reading slot directory error: " << rc << endl;
+		cerr << "While try to read slot num " << rid.slotNum << " at page " << rid.pageNum << endl;
+		SlotNum totalNumSlots = getNumSlots(readPage);
+		cerr << "The total number of slots is " << totalNumSlots << endl;
+		return rc;
+	}
+
+	// check if the data has been deleted
+	if (slotDir.recordLength == RECORD_DEL) {
+		return RC_RECORD_DELETED;
+	}
+
+	// check if the data has been forwarded
+	if (slotDir.recordLength == RECORD_FORWARD) {
+		// get the forward RID
+		RID forwardRID;
+		getForwardRID(forwardRID, slotDir.recordOffset);
+		// goto forwarded RID to read the data
+		return readRecord(fileHandle, recordDescriptor,
+				forwardRID, data);
+	}
+
+	// get the slot directory info
+	char *slot = readPage + slotDir.recordOffset;
+
+	// translate the slot record to printable data
+	memcpy(data, slot, slotDir.recordLength);
+
+    return SUCC;
+}
 // Given a record descriptor, read the record identified by the given rid.
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const RID &rid, void *data) {
@@ -385,6 +423,96 @@ RC RecordBasedFileManager::RecordBasedFileManager::updateRecord(FileHandle &file
 }
 
 // read values associating with the attribute
+RC RecordBasedFileManager::readAttribute(char *readPage, FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor,
+		const RID &rid, const string attributeName, void *data) {
+	RC rc;
+	// read the record
+	// get the Slot Directory
+	SlotDir slotDir;
+	rc = getSlotDir(readPage, slotDir, rid.slotNum);
+	if (rc != SUCC) {
+		cerr << "readAttribute: read slot direcotry error " << rc << endl;
+		return rc;
+	}
+	// see if the record is deleted or forwarded
+	if (slotDir.recordLength == RECORD_DEL) {
+		return RC_RECORD_DELETED;
+	}
+	if (slotDir.recordLength == RECORD_FORWARD) {
+		// get the forward RID
+		RID forwardRID;
+		getForwardRID(forwardRID, slotDir.recordOffset);
+		return readAttribute(fileHandle, recordDescriptor, forwardRID,
+				attributeName, data);
+	}
+
+	// read the record
+	char *record = ((char *)readPage) + slotDir.recordOffset;
+	// get the current record's version
+	VersionNumber curVer = *((VersionNumber *)record);
+
+	// see if the attribute exists in current version
+	VersionManager *vm = VersionManager::instance();
+	vector<Attribute> currentRD;
+	rc = vm->getAttributes(fileHandle.fileName, currentRD, curVer);
+	if (rc != SUCC) {
+		cerr << "readAttribute: get attribute error " << rc << endl;
+		return rc;
+	}
+
+	int offset = 0;	// offset to the attribute
+	int lenAttr = 0; // attribute length
+	int index = 0;
+	// go through the record descriptor until find the attribute name
+	for (; index < int(currentRD.size()); ++index) {
+		if (attributeName == currentRD[index].name) {
+			// locate the attribute
+			break;
+		} else {
+			switch(currentRD[index].type) {
+			case TypeInt:
+				offset += sizeof(int);
+				break;
+			case TypeReal:
+				offset += sizeof(float);
+				break;
+			case TypeVarChar:
+				int len = *((int *)(record + offset));
+				offset += len + sizeof(int);
+				break;
+			}
+		}
+	}
+
+	if (index == int(currentRD.size())) {
+		// no such attribute found
+		// return a default value
+		// the default value for Varchar is (int)0NULL
+		// the default value for Int is (int)0
+		// the default value for Real is (float)0.0
+		int defaultVal = 0;
+		memcpy(data, &defaultVal, sizeof(int));
+	} else {
+		// got the attribute hit
+		// read length of data
+		switch(currentRD[index].type) {
+		case TypeInt:
+			lenAttr = sizeof(int);
+			break;
+		case TypeReal:
+			lenAttr = sizeof(float);
+			break;
+		case TypeVarChar:
+			lenAttr = *((int *)(record + offset))+sizeof(int);
+			break;
+		}
+		// read the attribute
+		memcpy(data, record+offset, lenAttr);
+	}
+
+	return SUCC;
+}
 RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor,
 		const RID &rid, const string attributeName, void *data) {
@@ -783,6 +911,9 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 		rbfm_ScanIterator.value = NULL;
 	}
 
+	// set the previous page number to be -1
+	rbfm_ScanIterator.prevPageNum = -1;
+
 	// set the initial state of iterator
 	rbfm_ScanIterator.curRid.pageNum = TABLE_PAGES_NUM; // start from user page
 	rbfm_ScanIterator.curRid.slotNum = 0; // start from 1
@@ -837,12 +968,14 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 	for (PageNum pageNum = curRid.pageNum;
 			flag_NOT_EOF && pageNum < totalPageNum; ++pageNum) {
 		// read the page
-		rc = fHandle->readPage(pageNum, page);
-		if (rc != SUCC) {
-			cerr << "RBFM_ScanIterator::getNextRecord: read page error " << rc << endl;
-			return rc;
+		if (prevPageNum != pageNum) {
+			rc = fHandle->readPage(pageNum, page);
+			if (rc != SUCC) {
+				cerr << "RBFM_ScanIterator::getNextRecord: read page error " << rc << endl;
+				return rc;
+			}
+			prevPageNum = pageNum;
 		}
-
 		// get the total number slots
 		SlotNum totalSlotNum = rbfm->getNumSlots(page);
 		if (curRid.slotNum + 1 > totalSlotNum &&
@@ -864,7 +997,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			if (slotDir.recordLength == RECORD_DEL || slotDir.recordLength == RECORD_FORWARD)
 				continue;
 
-			rc = rbfm->readRecord(*fHandle, attrs, rid, tuple);
+			rc = rbfm->readRecord(page, *fHandle, attrs, rid, tuple);
 			if (rc != SUCC) {
 				cerr << "RBFM_ScanIterator::getNextRecord: read record error " << rc << endl;
 				return rc;
@@ -879,7 +1012,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			}
 
 			// get the condition value
-			rc = rbfm->readAttribute(*fHandle, attrs, rid, conditionName, attrData);
+			rc = rbfm->readAttribute(page, *fHandle, attrs, rid, conditionName, attrData);
 			if (rc != SUCC) {
 				cerr << "RBFM_ScanIterator::getNextRecord: read attribute value error " << rc << endl;
 				return rc;
@@ -887,7 +1020,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 			// the value meets the requirement, prepare output data
 			if (value == NULL || conditionName.empty() ||
 					compareValue(attrData, conditionType)) {
-				rc = prepareData(*fHandle, attrs, rid, data);
+				rc = prepareData(page, *fHandle, attrs, rid, data);
 				if (rc != SUCC) {
 					cerr << "RBFM_ScanIterator::getNextRecord: prepare data error " << rc << endl;
 					return rc;
@@ -922,7 +1055,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 	return RBFM_EOF;
 
 }
-RC RBFM_ScanIterator::prepareData(FileHandle &fileHandle,
+
+RC RBFM_ScanIterator::prepareData(char *readPage, FileHandle &fileHandle,
 		  const vector<Attribute> &recordDescriptor,
 		  const RID &rid, void *data) {
 	char *returnedData = (char *)data;
@@ -931,7 +1065,7 @@ RC RBFM_ScanIterator::prepareData(FileHandle &fileHandle,
 
 	for (int i = 0; i < int(projectedName.size()); ++i) {
 		// get the condition value
-		rc = rbfm->readAttribute(fileHandle, recordDescriptor,
+		rc = rbfm->readAttribute(readPage, fileHandle, recordDescriptor,
 				rid, projectedName[i], returnedData);
 		if (rc != SUCC) {
 			cerr << "RBFM_ScanIterator::getNextRecord: read attribute value error " << rc << endl;

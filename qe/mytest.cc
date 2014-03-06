@@ -295,7 +295,7 @@ int populateLeftVarCharTable() {
 		int a = i + 20;
 
 		int length = (i % 26) + 1;
-		string b;
+		string b(length, '/0');
 		for (unsigned j = 0; j < length; j++) {
 			b[j] = 96 + length;
 		}
@@ -324,7 +324,7 @@ int populateRightVarCharTable() {
 
 		// Prepare the tuple data for insertion
 		int length = (i % 26) + 1;
-		string b;
+		string b(length, '/0');
 		for (unsigned j = 0; j < length; j++) {
 			b[j] = 96 + length;
 		}
@@ -1428,7 +1428,7 @@ int extraTestCase_2()
         memset(data, 0, sizeof(float));
     }
 
-    if (average != 59.5) {
+    if (average != 69.5) {
     	rc = fail;
     }
 
@@ -1707,7 +1707,7 @@ int main() {
 	} else {
 		cerr << "fail test case 12" << endl;
 	}
-	/*
+
     // Extra Credit
 	// Aggregate
 	if (extraTestCase_1() == success) {
@@ -1750,6 +1750,7 @@ int main() {
     } else {
 		cerr << "fail extra test case 4" << endl;
 	}
+	/*
 */
 	print_point: cout << "grad-point: " << g_nGradPoint
 			<< "\t grad-extra-point: " << g_nGradExtraPoint << endl;

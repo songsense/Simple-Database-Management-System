@@ -128,7 +128,7 @@ private:
   RC openIndex(const string &tableName,
 		  const string &attributeName, FileHandle *&fileHandle);
   RC closeIndex(const string &tableName, const string &attributeName);
-  bool isIndexOpen(const string &tableName, const string &attributeName);
+  bool isIndexExist(const string &tableName, const string &attributeName);
   RC insertIndex(const string &tableName, const RID &rid);
   RC deleteIndex(const string &tableName, const RID &rid);
   RC deleteIndices(const string &tableName);

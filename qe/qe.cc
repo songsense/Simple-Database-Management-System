@@ -321,7 +321,8 @@ NLJoin::NLJoin(Iterator *leftIn,                             // Iterator of inpu
                TableScan *rightIn,                           // TableScan Iterator of input S
                const Condition &condition,                   // Join condition
                const unsigned numPages                       // Number of pages can be used to do join (decided by the optimizer)
-        ) : blockBuffer(numPages, leftIn){
+        ) : blockBuffer(numPages, leftIn),
+        		blockBufferRight(numPages, rightIn) {
 	if (condition.bRhsIsAttr == false) {
 		initStatus = false;
 		return;
@@ -362,14 +363,16 @@ RC NLJoin::getNextTuple(void *data){
 
 	RC rc;
 	do {
-		rc = rightIter->getNextTuple(curRightValue);
+//		rc = rightIter->getNextTuple(curRightValue);
+		rc = blockBufferRight.getNextTuple(curRightValue);
 		if (rc != SUCC) {
 			// need to load more outer data
 			needLoadNextLeftValue = true;
 			// reset the iterator, rewind to the begining
 			rightIter->setIterator();
 			// retry load data
-			rc = rightIter->getNextTuple(curRightValue);
+//			rc = rightIter->getNextTuple(curRightValue);
+			rc = blockBufferRight.getNextTuple(curRightValue);
 			if (rc != SUCC) {
 				rc = QE_FAIL_TO_FIND_CONDITION_ATTRIBUTE;
 				cerr << "Fail to load the inner data " << rc << endl;
@@ -588,6 +591,793 @@ void INLJoin::getAttributes(vector<Attribute> &attrs) const {
 };
 /*
  *
+ * 				Aggregate
+ *
+ */
+Aggregate::Aggregate(Iterator *input,                              // Iterator of input R
+          Attribute aggAttr,                            // The attribute over which we are computing an aggregate
+          AggregateOp op                                // Aggregate operation
+) {
+	if (aggAttr.type == TypeVarChar) {
+		initStatus = false;
+		cerr << "Try to aggregate a char that we don't support" << endl;
+		return;
+	}
+	initStatus = true;
+	// set iterator
+	iter = input;
+	// set the attributes of iterator
+	iter->getAttributes(attrs);
+	// set aggAttr;
+	this->aggAttr = aggAttr;
+	// set aggMode
+	aggMode = AGG_SINGLE_MODE;
+	// set AggregateOp
+	this->op = op;
+}
+Aggregate::Aggregate(Iterator *input,                              // Iterator of input R
+          Attribute aggAttr,                            // The attribute over which we are computing an aggregate
+          Attribute gAttr,                              // The attribute over which we are grouping the tuples
+          AggregateOp op                                // Aggregate operation
+){
+	if (aggAttr.type == TypeVarChar) {
+		initStatus = false;
+		cerr << "Try to aggregate a char that we don't support" << endl;
+		return;
+	}
+	initStatus = true;
+	// set iterator
+	iter = input;
+	// set the attributes of iterator
+	iter->getAttributes(attrs);
+	// set aggAttr;
+	this->aggAttr = aggAttr;
+	// set gAttr
+	this->gAttr = gAttr;
+	// set aggMode
+	aggMode = AGG_GROUP_MODE;
+	// set AggregateOp
+	this->op = op;
+	switch(op) {
+	case MIN:
+		prepareGroupMin();
+		break;
+	case MAX:
+		prepareGroupMax();
+		break;
+	case SUM:
+		prepareGroupSum();
+		break;
+	case AVG:
+		prepareGroupAvg();
+		break;
+	case COUNT:
+		prepareGroupCount();
+	}
+}
+
+RC Aggregate::getNextTuple(void *data){
+	if (initStatus == false) {
+		return QE_EOF;
+	}
+
+	if (aggMode == AGG_SINGLE_MODE) {
+		getNextTuple_single(data);
+		initStatus = false;
+		return SUCC;
+	} else if (aggMode == AGG_GROUP_MODE) {
+		RC rc;
+		switch(op) {
+		case MIN:
+		case MAX:
+		case SUM:
+			rc = getNextTuple_groupMaxMinSum(data);
+			break;
+		case AVG:
+			rc = getNextTuple_groupAvg(data);
+			break;
+		case COUNT:
+			rc = getNextTuple_groupCount(data);
+		}
+		return rc;
+	}
+
+	return SUCC;
+}
+void Aggregate::getAttributes(vector<Attribute> &attrs) const{
+	Attribute attr = aggAttr;
+	switch(op) {
+	case MIN:
+		attr.name = "MIN(";
+		break;
+	case MAX:
+		attr.name = "MAX(";
+		break;
+	case SUM:
+		attr.name = "SUM(";
+		break;
+	case AVG:
+		attr.name = "AVG(";
+		break;
+	case COUNT:
+		attr.name = "COUNT(";
+		break;
+	}
+	attr.name += (aggAttr.name + ")");
+
+	attrs.clear();
+	attrs.push_back(attr);
+}
+void Aggregate::getNextTuple_single(void *data) {
+	switch(op) {
+	case MIN:
+		singleMin(data);
+		break;
+	case MAX:
+		singleMax(data);
+		break;
+	case SUM:
+		singleSum(data);
+		break;
+	case AVG:
+		singleAvg(data);
+		break;
+	case COUNT:
+		singleCount(data);
+	}
+}
+RC Aggregate::getNextTuple_groupMaxMinSum(void *data) {
+	char *returnData = (char *)data;
+	if (aggAttr.type == TypeInt) {
+		if (gAttr.type == TypeInt) {
+			if (group_int_int.empty()) {
+				return QE_EOF;
+			} else {
+				auto itr = group_int_int.begin();
+				int id = itr->first;
+				int val = itr->second;
+				copyData(returnData, &id, gAttr.type);
+				copyData(returnData+sizeof(int), &val, aggAttr.type);
+				group_int_int.erase(itr);
+			}
+		} else if (gAttr.type == TypeReal) {
+			if (group_float_int.empty()) {
+				return QE_EOF;
+			} else {
+				auto itr = group_float_int.begin();
+				float id = itr->first;
+				int val = itr->second;
+				copyData(returnData, &id, gAttr.type);
+				copyData(returnData+sizeof(float), &val, aggAttr.type);
+				group_float_int.erase(itr);
+			}
+		} else {
+			if (group_string_int.empty()) {
+				return QE_EOF;
+			} else {
+				auto itr = group_string_int.begin();
+				string id = itr->first;
+				int val = itr->second;
+				copyData(returnData, id.c_str(), gAttr.type);
+				copyData(returnData+sizeof(int)+id.size(), &val, aggAttr.type);
+				group_string_int.erase(itr);
+			}
+		}
+	} else if (aggAttr.type == TypeReal) {
+		if (gAttr.type == TypeInt) {
+			if (group_int_float.empty()) {
+				return QE_EOF;
+			} else {
+				auto itr = group_int_float.begin();
+				int id = itr->first;
+				float val = itr->second;
+				copyData(returnData, &id, gAttr.type);
+				copyData(returnData+sizeof(int), &val, aggAttr.type);
+				group_int_float.erase(itr);
+			}
+		} else if (gAttr.type == TypeReal) {
+			if (group_float_float.empty()) {
+				return QE_EOF;
+			} else {
+				auto itr = group_float_float.begin();
+				float id = itr->first;
+				float val = itr->second;
+				copyData(returnData, &id, gAttr.type);
+				copyData(returnData+sizeof(float), &val, aggAttr.type);
+				group_float_float.erase(itr);
+			}
+		} else {
+			if (group_string_float.empty()) {
+				return QE_EOF;
+			} else {
+				auto itr = group_string_float.begin();
+				string id = itr->first;
+				float val = itr->second;
+				copyData(returnData, id.c_str(), gAttr.type);
+				copyData(returnData+sizeof(int)+id.size(), &val, aggAttr.type);
+				group_string_float.erase(itr);
+			}
+		}
+	} else {
+		cerr << "Try to aggregate a char that we don't support" << endl;
+	}
+	return SUCC;
+}
+RC Aggregate::getNextTuple_groupAvg(void *data) {
+	char *returnData = (char *)data;
+	if (gAttr.type == TypeInt) {
+		if (group_int_int.empty()) {
+			return QE_EOF;
+		} else {
+			auto itr_1 = group_int_int.begin();
+			int id = itr_1->first;
+			int cnt = itr_1->second;
+			auto itr_2 = group_int_float.begin();
+			float sum =  itr_2->second;
+			float avg = sum / (float)cnt;
+			copyData(returnData, &id, gAttr.type);
+			copyData(returnData+sizeof(int), &avg, aggAttr.type);
+			group_int_int.erase(itr_1);
+			group_int_float.erase(itr_2);
+		}
+	} else if (gAttr.type == TypeReal) {
+		if (group_float_int.empty()) {
+			return QE_EOF;
+		} else {
+			auto itr_1 = group_float_int.begin();
+			int id = itr_1->first;
+			int cnt = itr_1->second;
+			auto itr_2 = group_float_float.begin();
+			float sum =  itr_2->second;
+			float avg = sum / (float)cnt;
+			copyData(returnData, &id, gAttr.type);
+			copyData(returnData+sizeof(int), &avg, aggAttr.type);
+			group_float_int.erase(itr_1);
+			group_float_float.erase(itr_2);
+		}
+	} else {
+		if (group_string_int.empty()) {
+			return QE_EOF;
+		} else {
+			auto itr_1 = group_string_int.begin();
+			string id = itr_1->first;
+			int cnt = itr_1->second;
+			auto itr_2 = group_string_float.begin();
+			float sum =  itr_2->second;
+			float avg = sum / (float)cnt;
+			copyData(returnData, id.c_str(), gAttr.type);
+			copyData(returnData+sizeof(int), &avg, aggAttr.type);
+			group_string_int.erase(itr_1);
+			group_string_float.erase(itr_2);
+		}
+	}
+	return SUCC;
+}
+RC Aggregate::getNextTuple_groupCount(void *data) {
+	char *returnData = (char *)data;
+	if (gAttr.type == TypeInt) {
+		if (group_int_int.empty()) {
+			return QE_EOF;
+		} else {
+			auto itr = group_int_int.begin();
+			int id = itr->first;
+			int val = itr->second;
+			copyData(returnData, &id, gAttr.type);
+			copyData(returnData+sizeof(int), &val, aggAttr.type);
+			group_int_int.erase(itr);
+		}
+	} else if (gAttr.type == TypeReal) {
+		if (group_float_int.empty()) {
+			return QE_EOF;
+		} else {
+			auto itr = group_float_int.begin();
+			float id = itr->first;
+			int val = itr->second;
+			copyData(returnData, &id, gAttr.type);
+			copyData(returnData+sizeof(float), &val, aggAttr.type);
+			group_float_int.erase(itr);
+		}
+	} else {
+		if (group_string_int.empty()) {
+			return QE_EOF;
+		} else {
+			auto itr = group_string_int.begin();
+			string id = itr->first;
+			int val = itr->second;
+			copyData(returnData, id.c_str(), gAttr.type);
+			copyData(returnData+sizeof(int)+id.size(), &val, aggAttr.type);
+			group_string_int.erase(itr);
+		}
+	}
+	return SUCC;
+}
+void Aggregate::prepareGroupMax() {
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *aggValue, *gValue;
+		char *value = readValue;
+		int hit = 0;
+		// find pointer to aggValue and gValue
+		for (Attribute attr : attrs) {
+			if (hit >= 2) {
+				// find all. no need to continue
+				break;
+			}
+			if (attr.name == aggAttr.name) {
+				aggValue = value;
+				++hit;
+			}
+			if (attr.name == gAttr.name) {
+				gValue = value;
+				++hit;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		if (aggAttr.type == TypeInt) {
+			int aggVal = *((int *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupMax(group_int_int, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupMax(group_float_int, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupMax(group_string_int, gVal, aggVal);
+			}
+		} else if (aggAttr.type == TypeReal) {
+			float aggVal = *((float *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupMax(group_int_float, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupMax(group_float_float, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupMax(group_string_float, gVal, aggVal);
+			}
+		} else {
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+}
+void Aggregate::prepareGroupMin() {
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *aggValue, *gValue;
+		char *value = readValue;
+		int hit = 0;
+		// find pointer to aggValue and gValue
+		for (Attribute attr : attrs) {
+			if (hit >= 2) {
+				// find all. no need to continue
+				break;
+			}
+			if (attr.name == aggAttr.name) {
+				aggValue = value;
+				++hit;
+			}
+			if (attr.name == gAttr.name) {
+				gValue = value;
+				++hit;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		if (aggAttr.type == TypeInt) {
+			int aggVal = *((int *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupMin(group_int_int, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupMin(group_float_int, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupMin(group_string_int, gVal, aggVal);
+			}
+		} else if (aggAttr.type == TypeReal) {
+			float aggVal = *((float *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupMin(group_int_float, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupMin(group_float_float, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupMin(group_string_float, gVal, aggVal);
+			}
+		} else {
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+}
+void Aggregate::prepareGroupSum() {
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *aggValue, *gValue;
+		char *value = readValue;
+		int hit = 0;
+		// find pointer to aggValue and gValue
+		for (Attribute attr : attrs) {
+			if (hit >= 2) {
+				// find all. no need to continue
+				break;
+			}
+			if (attr.name == aggAttr.name) {
+				aggValue = value;
+				++hit;
+			}
+			if (attr.name == gAttr.name) {
+				gValue = value;
+				++hit;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		if (aggAttr.type == TypeInt) {
+			int aggVal = *((int *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupSum(group_int_int, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupSum(group_float_int, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupSum(group_string_int, gVal, aggVal);
+			}
+		} else if (aggAttr.type == TypeReal) {
+			float aggVal = *((float *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupSum(group_int_float, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupSum(group_float_float, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupSum(group_string_float, gVal, aggVal);
+			}
+		} else {
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+}
+void Aggregate::prepareGroupAvg() {
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *aggValue, *gValue;
+		char *value = readValue;
+		int hit = 0;
+		// find pointer to aggValue and gValue
+		for (Attribute attr : attrs) {
+			if (hit >= 2) {
+				// find all. no need to continue
+				break;
+			}
+			if (attr.name == aggAttr.name) {
+				aggValue = value;
+				++hit;
+			}
+			if (attr.name == gAttr.name) {
+				gValue = value;
+				++hit;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		if (aggAttr.type == TypeInt) {
+			float aggVal = (float)*((int *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupAvg(group_int_float, group_int_int, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupAvg(group_float_float, group_float_int, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupAvg(group_string_float, group_string_int, gVal, aggVal);
+			}
+		} else if (aggAttr.type == TypeReal) {
+			float aggVal = *((float *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupAvg(group_int_float, group_int_int, gVal, aggVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupAvg(group_float_float, group_float_int, gVal, aggVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupAvg(group_string_float, group_string_int, gVal, aggVal);
+			}
+		} else {
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+}
+void Aggregate::prepareGroupCount() {
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *aggValue, *gValue;
+		char *value = readValue;
+		int hit = 0;
+		// find pointer to aggValue and gValue
+		for (Attribute attr : attrs) {
+			if (hit >= 2) {
+				// find all. no need to continue
+				break;
+			}
+			if (attr.name == aggAttr.name) {
+				aggValue = value;
+				++hit;
+			}
+			if (attr.name == gAttr.name) {
+				gValue = value;
+				++hit;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		if (aggAttr.type == TypeInt) {
+			int aggVal = *((int *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupCount(group_int_int, gVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupCount(group_float_int, gVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupCount(group_string_int, gVal);
+			}
+		} else if (aggAttr.type == TypeReal) {
+			float aggVal = *((float *)aggValue);
+			if (gAttr.type == TypeInt) {
+				int gVal = *((int *)gValue);
+				groupCount(group_int_int, gVal);
+			} else if (gAttr.type == TypeReal) {
+				float gVal = *((float *)gValue);
+				groupCount(group_float_int, gVal);
+			} else {
+				int len = *((int *)gValue);
+				memcpy(str, gValue + sizeof(int), len);
+				str[len] = '\0';
+				string gVal(str);
+				groupCount(group_string_int, gVal);
+			}
+		} else {
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+}
+void Aggregate::singleMax(void *data) {
+	float val_float = -FLT_MAX;
+	int val_int = INT_MIN;
+
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *value = readValue;
+		for (Attribute attr : attrs) {
+			if (attr.name == aggAttr.name) {
+				break;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		switch(aggAttr.type) {
+		case TypeInt:
+			if (val_int < *((int *)value)) {
+				val_int = *((int *)value);
+			}
+			break;
+		case TypeReal:
+			if (val_float < *((float *)value)) {
+				val_float = *((float *)value);
+			}
+			break;
+		default:
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+	switch(aggAttr.type) {
+	case TypeInt:
+		memcpy(data, &val_int, sizeof(int));
+		break;
+	case TypeReal:
+		memcpy(data, &val_float, sizeof(float));
+		break;
+	default:
+		cerr << "Try to aggregate a char that we don't support" << endl;
+	}
+}
+void Aggregate::singleMin(void *data) {
+	float val_float = FLT_MAX;
+	int val_int = INT_MAX;
+
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *value = readValue;
+		for (Attribute attr : attrs) {
+			if (attr.name == aggAttr.name) {
+				break;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		switch(aggAttr.type) {
+		case TypeInt:
+			if (val_int > *((int *)value)) {
+				val_int = *((int *)value);
+			}
+			break;
+		case TypeReal:
+			if (val_float > *((float *)value)) {
+				val_float = *((float *)value);
+			}
+			break;
+		default:
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+	switch(aggAttr.type) {
+	case TypeInt:
+		memcpy(data, &val_int, sizeof(int));
+		break;
+	case TypeReal:
+		memcpy(data, &val_float, sizeof(float));
+		break;
+	default:
+		cerr << "Try to aggregate a char that we don't support" << endl;
+	}
+}
+void Aggregate::singleSum(void *data) {
+	float val_float = 0.;
+	int val_int = 0;
+
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *value = readValue;
+		for (Attribute attr : attrs) {
+			if (attr.name == aggAttr.name) {
+				break;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		switch(aggAttr.type) {
+		case TypeInt:
+			val_int += *((int *)value);
+			break;
+		case TypeReal:
+			val_float += *((float *)value);
+			break;
+		default:
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+	switch(aggAttr.type) {
+	case TypeInt:
+		memcpy(data, &val_int, sizeof(int));
+		break;
+	case TypeReal:
+		memcpy(data, &val_float, sizeof(float));
+		break;
+	default:
+		cerr << "Try to aggregate a char that we don't support" << endl;
+	}
+}
+void Aggregate::singleAvg(void *data) {
+	float val_float = 0.;
+	int val_int = 0;
+	float avg = 0;
+	float count = 0.;
+
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *value = readValue;
+		for (Attribute attr : attrs) {
+			if (attr.name == aggAttr.name) {
+				break;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		switch(aggAttr.type) {
+		case TypeInt:
+			val_int += *((int *)value);
+			break;
+		case TypeReal:
+			val_float += *((float *)value);
+			break;
+		default:
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+		count += 1.0;
+	}
+	switch(aggAttr.type) {
+	case TypeInt:
+		avg = (float)val_int / count;
+		break;
+	case TypeReal:
+		avg = val_float / count;
+		break;
+	default:
+		cerr << "Try to aggregate a char that we don't support" << endl;
+	}
+	memcpy(data, &avg, sizeof(float));
+}
+void Aggregate::singleCount(void *data) {
+	unordered_set<float> val_float;
+	unordered_set<int> val_int;
+	int count;
+
+	while (iter->getNextTuple(readValue) != QE_EOF) {
+		char *value = readValue;
+		for (Attribute attr : attrs) {
+			if (attr.name == aggAttr.name) {
+				break;
+			}
+			// move pointer
+			movePointer(value, attr.type);
+		}
+
+		switch(aggAttr.type) {
+		case TypeInt:
+			val_int.insert(*((int *)value));
+			break;
+		case TypeReal:
+			val_float.insert(*((float *)value));
+			break;
+		default:
+			cerr << "Try to aggregate a char that we don't support" << endl;
+		}
+	}
+	switch(aggAttr.type) {
+	case TypeInt:
+		count = val_int.size();
+		break;
+	case TypeReal:
+		count = val_float.size();
+		break;
+	default:
+		cerr << "Try to aggregate a char that we don't support" << endl;
+	}
+	memcpy(data, &count, sizeof(float));
+}
+
+/*
+ *
  * 				BlockBuffer
  *
  */
@@ -653,8 +1443,8 @@ RC BlockBuffer::getNextTuple(void *data) {
 	if (curIndex == dataPositions.size()) {
 		// no buffer cached, load more
 		loadNextBlock();
-		cerr << "bufferUsage " << bufferUsage << endl;
-		cerr << "number of data " << dataSizes.size() << endl;
+//		cerr << "bufferUsage " << bufferUsage << endl;
+//		cerr << "number of data " << dataSizes.size() << endl;
 		// retry to see if there is any more
 		if (curIndex == dataPositions.size()) {
 			// no buffer in disk either, quit

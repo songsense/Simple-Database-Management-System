@@ -113,13 +113,13 @@ public:
     #endif
     }
     MultipleFilesSpaceManager filesSpaceManager; // manage the file space
+    bool fileExist(const char *fileName);
 protected:
     PagedFileManager();                                   // Constructor
     ~PagedFileManager();                                  // Destructor
 
 private:
     static PagedFileManager *_pf_manager;
-    bool fileExist(const char *fileName);
     unordered_map<string, FileInfo> refCounter;			// count each file's reference
     void inc_refCounter(const string &fileName, FileHandle &fileHandle);		// reference increment
     void dec_refCounter(const string &fileName);		// reference decrement

@@ -3,6 +3,9 @@
 
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
+#include <climits>
+#include <cfloat>
 
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
@@ -326,6 +329,7 @@ class NLJoin : public Iterator {
         void getAttributes(vector<Attribute> &attrs) const;
     private:
         BlockBuffer blockBuffer;
+        BlockBuffer blockBufferRight;
         Iterator *leftIter;
         vector<Attribute> leftAttrs;
         TableScan *rightIter;
@@ -390,29 +394,110 @@ class INLJoin : public Iterator {
         void setRightIterator(char *leftValue);
 };
 
-
+#define AGG_SINGLE_MODE 0
+#define AGG_GROUP_MODE 1
+// typedef enum{ MIN = 0, MAX, SUM, AVG, COUNT } AggregateOp;
 class Aggregate : public Iterator {
     // Aggregation operator
     public:
         Aggregate(Iterator *input,                              // Iterator of input R
                   Attribute aggAttr,                            // The attribute over which we are computing an aggregate
                   AggregateOp op                                // Aggregate operation
-        ){};
+        );
 
         // Extra Credit
         Aggregate(Iterator *input,                              // Iterator of input R
                   Attribute aggAttr,                            // The attribute over which we are computing an aggregate
                   Attribute gAttr,                              // The attribute over which we are grouping the tuples
                   AggregateOp op                                // Aggregate operation
-        ){};
+        );
 
         ~Aggregate(){};
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // Please name the output attribute as aggregateOp(aggAttr)
         // E.g. Relation=rel, attribute=attr, aggregateOp=MAX
         // output attrname = "MAX(rel.attr)"
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+    private:
+        bool initStatus;
+        Iterator *iter;
+        vector<Attribute> attrs;
+        Attribute aggAttr;
+        Attribute gAttr;
+        RC aggMode;
+        AggregateOp op;
+        char readValue[PAGE_SIZE];
+        void getNextTuple_single(void *data);
+        void singleMax(void *data);
+        void singleMin(void *data);
+        void singleSum(void *data);
+        void singleAvg(void *data);
+        void singleCount(void *data);
+
+        char str[PAGE_SIZE];
+    	unordered_map<int, int> group_int_int;
+    	unordered_map<float, int> group_float_int;
+    	unordered_map<string, int> group_string_int;
+    	unordered_map<int, float> group_int_float;
+    	unordered_map<float, float> group_float_float;
+    	unordered_map<string, float> group_string_float;
+
+    	RC getNextTuple_groupMaxMinSum(void *data);
+    	RC getNextTuple_groupAvg(void *data);
+    	RC getNextTuple_groupCount(void *data);
+    	void prepareGroupMax();
+    	void prepareGroupMin();
+    	void prepareGroupSum();
+    	void prepareGroupAvg();
+    	void prepareGroupCount();
+    	template <typename GR, typename AGG>
+        void groupMax(unordered_map<GR, AGG> &map, const GR &gr, const AGG& agg) {
+    		if (map.count(gr) == 0) {
+    			map[gr] = agg;
+    		} else if (map[gr] < agg){
+    			map[gr] = agg;
+    		}
+    	}
+    	template <typename GR, typename AGG>
+        void groupMin(unordered_map<GR, AGG> &map, const GR &gr, const AGG& agg) {
+    		if (map.count(gr) == 0) {
+    			map[gr] = agg;
+    		} else if (map[gr] > agg){
+    			map[gr] = agg;
+    		}
+    	}
+    	template <typename GR, typename AGG>
+        void groupSum(unordered_map<GR, AGG> &map, const GR &gr, const AGG& agg) {
+    		if (map.count(gr) == 0) {
+    			map[gr] = agg;
+    		} else {
+    			map[gr] = map[gr] + agg;
+    		}
+    	}
+    	template <typename GR>
+        void groupAvg(unordered_map<GR, float> &map_sum,
+        		unordered_map<GR, int> &map_count,
+        		const GR &gr, float &agg) {
+    		if (map_count.count(gr) == 0) {
+    			map_count[gr] = agg;
+    		} else {
+    			map_count[gr] = map_count[gr] + 1;
+    		}
+    		if (map_sum.count(gr) == 0) {
+    			map_sum[gr] = (float)agg;
+    		} else {
+    			map_sum[gr] = map_sum[gr] + (float)agg;
+    		}
+    	}
+    	template <typename GR>
+        void groupCount(unordered_map<GR, int> &map, const GR &gr) {
+    		if (map.count(gr) == 0) {
+    			map[gr] = 1;
+    		} else {
+    			map[gr] = map[gr] + 1;
+    		}
+    	}
 };
 
 #endif

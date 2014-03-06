@@ -4,6 +4,6 @@ CODEROOT = ".."
 #CC = gcc
 CC = g++
 
-#CPPFLAGS = -Wall -I$(CODEROOT) -O3  # maximal optimization
+#CPPFLAGS = -Wall -I$(CODEROOT) -O3 -std=c++11 # maximal optimization
 CPPFLAGS = -Wall -I$(CODEROOT) -g   -std=c++11  # with debugging info
 	

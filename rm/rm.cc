@@ -390,16 +390,15 @@ RC RelationManager::closeIndex(const string &tableName, const string &attributeN
 	return SUCC;
 }
 
-bool RelationManager::isIndexOpen(const string &tableName, const string &attributeName) {
+bool RelationManager::isIndexExist(const string &tableName, const string &attributeName) {
 	string indexName;
 	makeIndexName(tableName, attributeName, indexName);
-	if (cachedIndexFileHandles.count(indexName) == 0 ||
-			cachedAttributes.count(indexName) == 0) {
-		return false;
-	} else {
+	PagedFileManager *pfm = PagedFileManager::instance();
+	if (pfm->fileExist(indexName.c_str())) {
 		return true;
+	} else {
+		return false;
 	}
-
 }
 
 RC RelationManager::insertIndex(const string &tableName, const RID &rid) {
@@ -418,7 +417,7 @@ RC RelationManager::insertIndex(const string &tableName, const RID &rid) {
 
 	// iterate to see it there exists an index file
 	for (Attribute attr : attrs) {
-		if (isIndexOpen(tableName, attr.name)) {
+		if (isIndexExist(tableName, attr.name)) {
 			// open the index file
 			FileHandle *fileHandle;
 			rc = openIndex(tableName, attr.name, fileHandle);
@@ -458,7 +457,7 @@ RC RelationManager::deleteIndex(const string &tableName, const RID &rid) {
 
 	// iterate to see it there exists an index file
 	for (Attribute attr : attrs) {
-		if (isIndexOpen(tableName, attr.name)) {
+		if (isIndexExist(tableName, attr.name)) {
 			// open the index file
 			FileHandle *fileHandle;
 			rc = openIndex(tableName, attr.name, fileHandle);
@@ -496,7 +495,7 @@ RC RelationManager::deleteIndices(const string &tableName) {
 
 	// iterate to see it there exists an index file
 	for (Attribute attr : attrs) {
-		if (isIndexOpen(tableName, attr.name)) {
+		if (isIndexExist(tableName, attr.name)) {
 			// open the index file
 			FileHandle *fileHandle;
 			rc = openIndex(tableName, attr.name, fileHandle);
