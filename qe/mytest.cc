@@ -1572,6 +1572,7 @@ void cleanAll() {
 	remove("right_C");
 	remove("leftvarchar");
 	remove("rightvarchar");
+	remove("group");
 }
 
 int main() {
