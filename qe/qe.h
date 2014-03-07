@@ -133,8 +133,6 @@ class TableScan : public Iterator
 
             // Get Attributes from RM
             rm.getAttributes(tableName, attrs);
-            // jump the first, because it is the version number
-            attrs.erase(attrs.begin());
 
             // Get Attribute Names from RM
             unsigned i;
@@ -210,8 +208,6 @@ class IndexScan : public Iterator
 
             // Get Attributes from RM
             rm.getAttributes(tableName, attrs);
-            // jump the first, because it is the version number
-            attrs.erase(attrs.begin());
 
             // Call rm indexScan to get iterator
             iter = new RM_IndexScanIterator();
@@ -480,7 +476,7 @@ class Aggregate : public Iterator {
         		unordered_map<GR, int> &map_count,
         		const GR &gr, float &agg) {
     		if (map_count.count(gr) == 0) {
-    			map_count[gr] = agg;
+    			map_count[gr] = 1;
     		} else {
     			map_count[gr] = map_count[gr] + 1;
     		}

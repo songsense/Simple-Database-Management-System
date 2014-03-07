@@ -60,6 +60,7 @@ public:
   RC deleteTable(const string &tableName);
 
   RC getAttributes(const string &tableName, vector<Attribute> &attrs);
+  RC getAllAttributes(const string &tableName, vector<Attribute> &attrs);
 
   RC insertTuple(const string &tableName, const void *data, RID &rid);
 

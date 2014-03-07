@@ -26,7 +26,7 @@ RC IndexManager::createFile(const string &fileName)
 	PagedFileManager *pfm = PagedFileManager::instance();
 	rc = pfm->createFile(fileName.c_str());
 	if(rc != SUCC) {
-		cerr << "IndexManager::createFile: create index file error " << rc << endl;
+		cerr << "IndexManager::createFile: create index file error " << fileName << " "<< rc << endl;
 		return rc;
 	}
 	FileHandle fileHandle;
@@ -43,7 +43,7 @@ RC IndexManager::createFile(const string &fileName)
 	setPageLeaf(page, CONST_IS_LEAF);
 	rc = fileHandle.writePage(ROOT_PAGE, page);
 	if(rc != SUCC) {
-		cerr << "IndexManager::createFile: write pages eror " << rc << endl;
+		cerr << "IndexManager::createFile: write pages error " << rc << endl;
 		return rc;
 	}
 	for (PageNum pn = 1; pn < totalPageNum; ++pn) {
@@ -51,7 +51,7 @@ RC IndexManager::createFile(const string &fileName)
 		setPageLeaf(page, CONST_IS_LEAF);
 		rc = fileHandle.writePage(pn, page);
 		if(rc != SUCC) {
-			cerr << "IndexManager::createFile: write pages eror " << rc << endl;
+			cerr << "IndexManager::createFile: write pages error " << rc << endl;
 			return rc;
 		}
 	}
@@ -85,7 +85,7 @@ RC IndexManager::openFile(const string &fileName, FileHandle &fileHandle)
 	PagedFileManager *pfm = PagedFileManager::instance();
 	rc = pfm->openFile(fileName.c_str(), fileHandle);
 	if(rc != SUCC) {
-		cerr << "IndexManager::openFile: open index file error " << rc << endl;
+		cerr << "IndexManager::openFile: open index file error " << fileName << " "<< rc << endl;
 		return rc;
 	}
 	SpaceManager *sm = SpaceManager::instance();

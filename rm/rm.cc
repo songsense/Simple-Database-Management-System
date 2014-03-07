@@ -52,6 +52,9 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 		rc = ix->insertEntry(*indexFileHandle, attr, returnedData, rid);
 		if (rc != SUCC) {
 			cerr << "createIndex: insertEntry error " << rc << endl;
+			cerr << "rid.pageNum " << rid.pageNum << " rid.slotNum " << rid.slotNum << endl;
+			cerr << "attr " << attr.name << endl;
+			cerr << "returnedData size " << *(int *)returnedData << endl;
 			return rc;
 		}
 	}
@@ -64,12 +67,6 @@ RC RelationManager::destroyIndex(const string &tableName, const string &attribut
 	IndexManager *ix = IndexManager::instance();
 	string indexName;
 	makeIndexName(tableName, attributeName, indexName);
-
-	rc = closeIndex(tableName, attributeName);
-	if (rc != SUCC) {
-		cerr << "destroyIndex: closeIndex error " << rc << endl;
-		return rc;
-	}
 
 	rc = ix->destroyFile(indexName);
 	if (rc != SUCC) {
@@ -84,7 +81,7 @@ RC RelationManager::destroyIndex(const string &tableName, const string &attribut
 RC RelationManager::getSpecificAttribute(const string &tableName, const string &attributeName, Attribute &attr) {
 	RC rc;
 	vector<Attribute> attrs;
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "getSpecificAttribute: get attribute error " << rc << endl;
 		return rc;
@@ -241,6 +238,26 @@ RC RelationManager::deleteTable(const string &tableName)
 	VersionManager *vm = VersionManager::instance();
 	RC rc;
 
+	// delete all indices
+	// get attribute
+	vector<Attribute> attrs;
+	rc = getAllAttributes(tableName, attrs);
+	if (rc != SUCC) {
+		cerr << "deleteTable: getAttributes error " << rc << endl;
+		return rc;
+	}
+	// iterate to see it there exists an index file
+	for (Attribute attr : attrs) {
+		if (isIndexExist(tableName, attr.name)) {
+			// destroy the index file
+			rc = destroyIndex(tableName, attr.name);
+			if (rc != SUCC) {
+				cerr << "deleteTable: destroyIndex error " << rc << endl;
+				return rc;
+			}
+		}
+	}
+
 	closeTable(tableName);
 
 	// just destroy the table
@@ -251,11 +268,33 @@ RC RelationManager::deleteTable(const string &tableName)
 	}
 
 	vm->eraseTableVersionInfo(tableName);
-
     return rc;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
+{
+	VersionManager *vm = VersionManager::instance();
+	VersionNumber curVer(0);
+	RC rc;
+
+	rc = vm->getVersionNumber(tableName, curVer);
+	if (rc != SUCC) {
+		cerr << tableName << ": current version requested: " << curVer << endl;
+		cerr << "getAttribute: get version number error " << rc << endl;
+		return rc;
+	}
+
+	rc = vm->getAttributes(tableName, attrs, curVer);
+	if (rc != SUCC) {
+		cerr << "getAttribute: get attribute error " << rc << endl;
+		return rc;
+	}
+
+	attrs.erase(attrs.begin());
+	return SUCC;
+}
+
+RC RelationManager::getAllAttributes(const string &tableName, vector<Attribute> &attrs)
 {
 	VersionManager *vm = VersionManager::instance();
 	VersionNumber curVer(0);
@@ -407,7 +446,7 @@ RC RelationManager::insertIndex(const string &tableName, const RID &rid) {
 	IndexManager *ix = IndexManager::instance();
 
 	// get attribute
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "insertIndex: getAttributes error " << rc << endl;
 		return rc;
@@ -447,7 +486,7 @@ RC RelationManager::deleteIndex(const string &tableName, const RID &rid) {
 	IndexManager *ix = IndexManager::instance();
 
 	// get attribute
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "deleteIndex: getAttributes error " << rc << endl;
 		return rc;
@@ -487,7 +526,7 @@ RC RelationManager::deleteIndices(const string &tableName) {
 	IndexManager *ix = IndexManager::instance();
 
 	// get attribute
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "deleteIndices: getAttributes error " << rc << endl;
 		return rc;
@@ -618,7 +657,7 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 
 	// get the current version attribute
 	vector<Attribute> attrs;
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "deleteTuple: get attribute error " << rc << endl;
 		return rc;
@@ -697,7 +736,7 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 
 	// get the current version attribute
 	vector<Attribute> attrs;
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "readTuple: read the attribute " << rc << endl;
 		return rc;
@@ -745,7 +784,7 @@ RC RelationManager::readAttribute(const string &tableName,
 
 	// get the current version attribute
 	vector<Attribute> attrs;
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "RelationManager::readAttribute: get attribute error " << rc << endl;
 		return rc;
@@ -774,7 +813,7 @@ RC RelationManager::reorganizePage(const string &tableName, const unsigned pageN
 	}
 	// get the current version attribute
 	vector<Attribute> attrs;
-	rc = getAttributes(tableName, attrs);
+	rc = getAllAttributes(tableName, attrs);
 	if (rc != SUCC) {
 		cerr << "RelationManager::reorganizePage: get attribute error " << rc << endl;
 		return rc;
@@ -839,6 +878,15 @@ RC RelationManager::dropAttribute(const string &tableName, const string &attribu
 {
 	VersionManager *vm = VersionManager::instance();
 	RC rc;
+
+	// drop the index file if exists
+	if (isIndexExist(tableName, attributeName)) {
+		rc = destroyIndex(tableName, attributeName);
+		if (rc != SUCC) {
+			cerr << "RelationManager::destroyIndex: destroyIndex error " << tableName+attributeName << " error " << rc << endl;
+			return rc;
+		}
+	}
 
 	// open the file
 	FileHandle *fileHandle;

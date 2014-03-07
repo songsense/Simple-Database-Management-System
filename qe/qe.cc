@@ -757,9 +757,11 @@ RC Aggregate::getNextTuple_groupMaxMinSum(void *data) {
 			} else {
 				auto itr = group_string_int.begin();
 				string id = itr->first;
+				int id_len = id.size();
 				int val = itr->second;
-				copyData(returnData, id.c_str(), gAttr.type);
-				copyData(returnData+sizeof(int)+id.size(), &val, aggAttr.type);
+				memcpy(returnData, &id_len, sizeof(int));
+				memcpy(returnData+sizeof(int), id.c_str(), id_len);
+				copyData(returnData+sizeof(int)+id_len, &val, aggAttr.type);
 				group_string_int.erase(itr);
 			}
 		}
@@ -792,9 +794,11 @@ RC Aggregate::getNextTuple_groupMaxMinSum(void *data) {
 			} else {
 				auto itr = group_string_float.begin();
 				string id = itr->first;
+				int id_len = id.size();
 				float val = itr->second;
-				copyData(returnData, id.c_str(), gAttr.type);
-				copyData(returnData+sizeof(int)+id.size(), &val, aggAttr.type);
+				memcpy(returnData, &id_len, sizeof(int));
+				memcpy(returnData+sizeof(int), id.c_str(), id_len);
+				copyData(returnData+sizeof(int)+id_len, &val, aggAttr.type);
 				group_string_float.erase(itr);
 			}
 		}
@@ -841,12 +845,14 @@ RC Aggregate::getNextTuple_groupAvg(void *data) {
 		} else {
 			auto itr_1 = group_string_int.begin();
 			string id = itr_1->first;
+			int id_len = id.size();
 			int cnt = itr_1->second;
 			auto itr_2 = group_string_float.begin();
 			float sum =  itr_2->second;
 			float avg = sum / (float)cnt;
-			copyData(returnData, id.c_str(), gAttr.type);
-			copyData(returnData+sizeof(int), &avg, aggAttr.type);
+			memcpy(returnData, &id_len, sizeof(int));
+			memcpy(returnData+sizeof(int), id.c_str(), id_len);
+			copyData(returnData+sizeof(int)+id_len, &avg, aggAttr.type);
 			group_string_int.erase(itr_1);
 			group_string_float.erase(itr_2);
 		}
@@ -883,9 +889,11 @@ RC Aggregate::getNextTuple_groupCount(void *data) {
 		} else {
 			auto itr = group_string_int.begin();
 			string id = itr->first;
+			int id_len = id.size();
 			int val = itr->second;
-			copyData(returnData, id.c_str(), gAttr.type);
-			copyData(returnData+sizeof(int)+id.size(), &val, aggAttr.type);
+			memcpy(returnData, &id_len, sizeof(int));
+			memcpy(returnData+sizeof(int), id.c_str(), id_len);
+			copyData(returnData+sizeof(int)+id_len, &val, aggAttr.type);
 			group_string_int.erase(itr);
 		}
 	}
@@ -1340,7 +1348,7 @@ void Aggregate::singleAvg(void *data) {
 void Aggregate::singleCount(void *data) {
 	unordered_set<float> val_float;
 	unordered_set<int> val_int;
-	int count;
+	float countUniqueVal;
 
 	while (iter->getNextTuple(readValue) != QE_EOF) {
 		char *value = readValue;
@@ -1365,15 +1373,15 @@ void Aggregate::singleCount(void *data) {
 	}
 	switch(aggAttr.type) {
 	case TypeInt:
-		count = val_int.size();
+		countUniqueVal = val_int.size();
 		break;
 	case TypeReal:
-		count = val_float.size();
+		countUniqueVal = val_float.size();
 		break;
 	default:
 		cerr << "Try to aggregate a char that we don't support" << endl;
 	}
-	memcpy(data, &count, sizeof(float));
+	memcpy(data, &countUniqueVal, sizeof(float));
 }
 
 /*
